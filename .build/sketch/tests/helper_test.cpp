@@ -36,12 +36,23 @@ int main() {
 
   JsonDocument candidate;
   candidate["currentPosition"] = 456;
+  candidate["config_name"] = "bedroom-blind";
   candidate["startPosition"] = -100;
   candidate["maxPosition"] = 1900;
   candidate["mqtt_pwd"] = "quotes-\"-and-backslash-\\";
   assert(helper.saveconfig(candidate.as<JsonVariantConst>()));
   assert(SPIFFS.files["/config.bak"] == oldConfig);
   const std::string goodConfig = SPIFFS.files["/config.json"];
+  {
+    NidayandHelper afterRestart;
+    assert(afterRestart.loadconfig());
+    JsonVariantConst restored = afterRestart.getconfig();
+    assert(restored["startPosition"].is<long>() && restored["maxPosition"].is<long>());
+    assert(restored["startPosition"].as<long>() == -100);
+    assert(restored["maxPosition"].as<long>() == 1900);
+    assert(std::string(restored["config_name"].as<const char*>()) == "bedroom-blind");
+  }
+  puts("PASS: both saved endpoints reload unchanged in a fresh helper instance");
   assert(helper.loadconfig());
   assert(helper.getconfig()["currentPosition"].as<long>() == 456);
   assert(std::string(helper.getconfig()["mqtt_pwd"].as<const char*>()) == "quotes-\"-and-backslash-\\");

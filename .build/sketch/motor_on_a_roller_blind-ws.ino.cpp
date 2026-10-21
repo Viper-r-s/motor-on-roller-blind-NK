@@ -11,15 +11,18 @@
 #include <ESP8266WebServer.h>
 #include <WebSocketsServer.h>
 #include <ArduinoOTA.h>
+#include <Updater.h>
 #include "NidayandHelper.h"
 #include "BlindMotion.h"
 #include "StatusSchedule.h"
+#include "FirmwareUpload.h"
+#include "DeviceName.h"
 #include "index_html.h"
 
 // Keep the original AP credentials and motor pin order.
 const char* APid = "F1";
 const char* APpw = "12345678";
-const char* version = "1.5.0";
+const char* version = "1.7.0";
 
 struct DeviceConfig {
   long currentPosition = 0;
@@ -48,46 +51,75 @@ bool shouldSaveConfig = false;
 unsigned long configRevision = 0;
 StatusSchedule statusSchedule;
 String saveError;
+FirmwareUpload firmwareUpload;
+String firmwareToken;
+unsigned long firmwareRestartRequestedAt = 0;
+bool nameRestartPending = false;
+unsigned long nameRestartRequestedAt = 0;
+struct FlashFirmwareWriter {
+  bool begin(size_t size) { return Update.begin(size, U_FLASH); }
+  size_t write(uint8_t* data, size_t length) { return Update.write(data, length); }
+  bool end(bool partial) { return Update.end(partial); }
+} firmwareWriter;
 
-#line 50 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 63 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+size_t firmwareCapacity();
+#line 68 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+bool updateBusy();
+#line 70 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 void copyJsonString(JsonVariantConst json, const char* key, char* destination, size_t size);
-#line 55 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 75 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 bool loadConfig();
-#line 80 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 100 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 bool saveConfig(const DeviceConfig& candidate);
-#line 102 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 122 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 void stopPowerToCoils();
-#line 107 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 127 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 void haltMotor();
-#line 112 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 132 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 bool savePosition();
-#line 118 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 138 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 String statusJson();
-#line 139 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 159 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 String configJson();
-#line 170 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 195 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 void configureMqtt();
-#line 177 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 202 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 bool processMsg(String message, String& error);
-#line 216 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 242 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 void webSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t length);
-#line 233 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 259 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 void mqttCallback(char* topic, byte* payload, unsigned int length);
-#line 241 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
-void respondError(int code, const String& error);
-#line 248 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
-void handleLimits();
 #line 267 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+void respondError(int code, const String& error);
+#line 276 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+void handleFirmwareUpload();
+#line 316 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+void handleFirmwareComplete();
+#line 328 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+bool rejectDuringUpdate();
+#line 334 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+void handleDeviceName();
+#line 360 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+void handleLimits();
+#line 380 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 void handleDirection();
-#line 279 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 393 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 void handleMqttSettings();
-#line 312 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 427 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 void saveConfigCallback();
-#line 314 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 429 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 void setup();
-#line 395 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 518 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
 void loop();
-#line 50 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+#line 63 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\motor_on_a_roller_blind-ws.ino"
+size_t firmwareCapacity() {
+  uint32_t freeSpace = ESP.getFreeSketchSpace();
+  return freeSpace > 0x1000 ? (freeSpace - 0x1000) & 0xFFFFF000UL : 0;
+}
+
+bool updateBusy() { return nameRestartPending || firmwareUpload.busy() || Update.isRunning(); }
+
 void copyJsonString(JsonVariantConst json, const char* key, char* destination, size_t size) {
   const char* value = json[key];
   if (value && strlen(value) < size) strlcpy(destination, value, size);
@@ -130,7 +162,7 @@ bool saveConfig(const DeviceConfig& candidate) {
   json["mqtt_pwd"] = candidate.mqttPassword;
   json["config_rotation"] = candidate.clockwise ? "true" : "false";
   if (json.overflowed() || !filesystemReady || !helper.saveconfig(json.as<JsonVariantConst>())) {
-    saveError = "Speichern im Flash fehlgeschlagen. Bisherige Einstellungen bleiben erhalten.";
+    saveError = "Failed to save to flash. Previous settings have been retained.";
     return false;
   }
   config = candidate;
@@ -182,7 +214,12 @@ String configJson() {
   json["persisted"] = persisted;
   json["configRevision"] = configRevision;
   json["name"] = config.name;
+  json["ipAddress"] = WiFi.localIP().toString();
+  json["restartPending"] = nameRestartPending;
   json["version"] = version;
+  json["firmwareMaxSize"] = firmwareCapacity();
+  json["firmwareToken"] = firmwareToken;
+  json["firmwareUpdating"] = firmwareUpload.busy() || Update.isRunning();
   json["currentPosition"] = config.currentPosition;
   json["startPosition"] = config.startPosition;
   json["maxPosition"] = config.maxPosition;
@@ -218,6 +255,7 @@ void configureMqtt() {
 bool processMsg(String message, String& error) {
   if (message == "(ping)") return true;
   if (message == "(update)") { publishStatus(); return true; }
+  if (updateBusy()) { error = "An update or restart is in progress. Motor control is locked."; return false; }
   if (message == "(0)") {
     haltMotor();
     bool ok = savePosition();
@@ -232,7 +270,7 @@ bool processMsg(String message, String& error) {
     if (message == "(start)") candidate.startPosition = motion.current;
     else candidate.maxPosition = motion.current;
     if (!BlindMotion::validLimits(candidate.startPosition, candidate.maxPosition)) {
-      error = "Anfang muss kleiner als Ende sein. Beide Grenzen koennen auch direkt eingegeben werden.";
+      error = "Start must be less than end. You can also enter both limits directly.";
       publishStatus();
       return false;
     }
@@ -244,7 +282,7 @@ bool processMsg(String message, String& error) {
   } else {
     long percentage;
     if (!BlindMotion::parseNumber(message.c_str(), 0, 100, percentage)) {
-      error = "Unbekannter Befehl. Position muss eine ganze Zahl von 0 bis 100 sein.";
+      error = "Unknown command. Position must be an integer from 0 to 100.";
       return false;
     }
     motion.goTo(percentage);
@@ -286,12 +324,99 @@ void respondError(int code, const String& error) {
   server.send(code, "application/json; charset=utf-8", result);
 }
 
+// Custom streaming endpoint: never accepts filesystem images and only commits
+// after the complete multipart request (not merely the first FILE_END).
+void handleFirmwareUpload() {
+  HTTPUpload& upload = server.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    if (nameRestartPending) {
+      firmwareUpload.reject(firmwareWriter, 409, "A device-name change is pending. Wait for the restart."); return;
+    }
+    if (firmwareUpload.busy()) {
+      firmwareUpload.reject(firmwareWriter, 409, "Only one firmware file is allowed per request.");
+      return;
+    }
+    if (Update.isRunning()) {
+      firmwareUpload.reject(firmwareWriter, 409, "Another update is already in progress."); return;
+    }
+    if (!firmwareToken.length() || server.header("X-Firmware-Token") != firmwareToken) {
+      firmwareUpload.reject(firmwareWriter, 403, "Update token missing or expired. Reload this page."); return;
+    }
+    if (upload.name != "firmware" || !FirmwareUpload::validName(upload.filename.c_str())) {
+      firmwareUpload.reject(firmwareWriter, 400, "Select exactly one firmware file (.bin)."); return;
+    }
+    long size;
+    if (!BlindMotion::parseNumber(server.header("X-Firmware-Size").c_str(), 32, firmwareCapacity(), size)) {
+      firmwareUpload.reject(firmwareWriter, 413, "Invalid file size or insufficient update space."); return;
+    }
+    haltMotor();
+    if (!savePosition()) {
+      firmwareUpload.reject(firmwareWriter, 500, "Could not save the position. Firmware update cancelled."); return;
+    }
+    publishStatus();
+    firmwareUpload.begin(firmwareWriter, size, firmwareCapacity());
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    firmwareUpload.write(firmwareWriter, upload.buf, upload.currentSize);
+  } else if (upload.status == UPLOAD_FILE_END) {
+    firmwareUpload.fileEnd(firmwareWriter, upload.totalSize);
+  } else if (upload.status == UPLOAD_FILE_ABORTED) {
+    firmwareUpload.reject(firmwareWriter, 400, "Upload cancelled. The current firmware remains active.");
+    haltMotor();
+  }
+  yield();
+}
+
+void handleFirmwareComplete() {
+  if (!firmwareUpload.finish(firmwareWriter)) {
+    respondError(firmwareUpload.errorCode, firmwareUpload.error);
+    return;
+  }
+  server.sendHeader("Cache-Control", "no-store");
+  server.sendHeader("Connection", "close");
+  server.client().setNoDelay(true);
+  server.send(200, "application/json; charset=utf-8", "{\"ok\":true,\"rebooting\":true}");
+  firmwareRestartRequestedAt = millis();
+}
+
+bool rejectDuringUpdate() {
+  if (!updateBusy()) return false;
+  respondError(409, "An update or restart is in progress. Settings and motor control are locked.");
+  return true;
+}
+
+void handleDeviceName() {
+  if (rejectDuringUpdate()) return;
+  String name = server.arg("name");
+  name.trim();
+  name.toLowerCase();
+  if (!DeviceName::valid(name.c_str())) {
+    respondError(400, "Use 1-31 letters, digits or hyphens. No spaces, dots, leading or trailing hyphens.");
+    return;
+  }
+  if (name == config.name) {
+    server.send(200, "application/json; charset=utf-8", configJson());
+    return;
+  }
+  haltMotor();
+  DeviceConfig candidate = config;
+  candidate.currentPosition = motion.current;
+  name.toCharArray(candidate.name, sizeof(candidate.name));
+  if (!saveConfig(candidate)) { respondError(500, saveError); publishStatus(); return; }
+  // ArduinoOTA's setHostname() ignores changes after initialization. A delayed
+  // restart applies the saved name consistently to DHCP, mDNS and ArduinoOTA.
+  nameRestartPending = true;
+  nameRestartRequestedAt = millis();
+  server.sendHeader("Cache-Control", "no-store");
+  server.send(200, "application/json; charset=utf-8", configJson());
+}
+
 void handleLimits() {
+  if (rejectDuringUpdate()) return;
   long first, last;
   if (!BlindMotion::parseNumber(server.arg("startPosition").c_str(), -BlindMotion::coordinateLimit, BlindMotion::coordinateLimit, first) ||
       !BlindMotion::parseNumber(server.arg("maxPosition").c_str(), -BlindMotion::coordinateLimit, BlindMotion::coordinateLimit, last) ||
       !BlindMotion::validLimits(first, last)) {
-    respondError(400, "Ungueltige Grenzen: Anfang < Ende; Bereich -1000000000 bis 1000000000 Schritte.");
+    respondError(400, "Invalid limits: start < end; range -1000000000 to 1000000000 steps.");
     return;
   }
   haltMotor();
@@ -306,8 +431,9 @@ void handleLimits() {
 }
 
 void handleDirection() {
+  if (rejectDuringUpdate()) return;
   String value = server.arg("clockwise");
-  if (value != "true" && value != "false") { respondError(400, "Ungueltige Laufrichtung."); return; }
+  if (value != "true" && value != "false") { respondError(400, "Invalid rotation direction."); return; }
   haltMotor();
   DeviceConfig candidate = config;
   candidate.currentPosition = motion.current;
@@ -318,23 +444,24 @@ void handleDirection() {
 }
 
 void handleMqttSettings() {
+  if (rejectDuringUpdate()) return;
   long port;
   String host = server.arg("mqtt_server"), uid = server.arg("mqtt_uid"), password = server.arg("mqtt_pwd");
   host.trim();
   if (!server.hasArg("mqtt_server") || !server.hasArg("mqtt_uid") ||
       !BlindMotion::parseNumber(server.arg("mqtt_port").c_str(), 1, 65535, port) ||
       host.length() >= sizeof(config.mqttServer) || uid.length() >= sizeof(config.mqttUser) || password.length() >= sizeof(config.mqttPassword)) {
-    respondError(400, "MQTT: Host, Benutzer und Passwort maximal 39 Zeichen; Port 1 bis 65535.");
+    respondError(400, "MQTT: host, username and password must not exceed 39 characters; port must be 1-65535.");
     return;
   }
   for (size_t i = 0; i < host.length(); ++i) {
     char c = host[i];
     if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '-')) {
-      respondError(400, "Broker als IPv4-Adresse oder Hostname ohne Protokoll/Pfad eingeben."); return;
+      respondError(400, "Enter the broker IPv4 address or hostname without a protocol or path."); return;
     }
   }
   if (password.length() && server.arg("clear_password") == "true") {
-    respondError(400, "Entweder neues Passwort eingeben oder Passwort loeschen waehlen."); return;
+    respondError(400, "Either enter a new password or select delete password."); return;
   }
   haltMotor();
   DeviceConfig candidate = config;
@@ -355,14 +482,14 @@ void saveConfigCallback() { shouldSaveConfig = true; }
 void setup() {
   Serial.begin(115200);
   Serial.println();
-  Serial.println(F("[boot] Rollladensteuerung startet"));
+  Serial.println(F("[boot] Roller blind controller startet"));
   Serial.println(ESP.getResetInfo());
   haltMotor();
   Serial.println(F("[boot] SPIFFS einbinden"));
   filesystemReady = helper.beginStorage(FS_PHYS_ADDR, FS_PHYS_ADDR + FS_PHYS_SIZE);
   Serial.println(filesystemReady ? F("[boot] SPIFFS bereit; Konfiguration laden") : F("[boot] SPIFFS nicht verfuegbar"));
   if (filesystemReady) persisted = loadConfig();
-  else saveError = "Dateisystem nicht eingebunden: Flashlayout pruefen (4 MB / 1 MB FS). Vorhandene Daten wurden nicht formatiert.";
+  else saveError = "Filesystem not mounted: check the flash layout (4 MB / 1 MB FS). Existing data was not formatted.";
   Serial.println(F("[boot] Konfiguration abgeschlossen"));
   motion.current = config.currentPosition;
   motion.start = config.startPosition;
@@ -374,7 +501,7 @@ void setup() {
   // Load saved values BEFORE creating WiFiManager parameters, not afterwards.
   WiFi.hostname(config.name);
   char rotation[6]; strlcpy(rotation, config.clockwise ? "true" : "false", sizeof(rotation));
-  WiFiManagerParameter nameParam("Name", "Bonjour name", config.name, 39);
+  WiFiManagerParameter nameParam("Name", "Device name (hostname)", config.name, 31);
   WiFiManagerParameter rotationParam("Rotation", "Clockwise to close: true/false", rotation, 5);
   WiFiManagerParameter serverParam("server", "MQTT server", config.mqttServer, 39);
   WiFiManagerParameter portParam("port", "MQTT port", config.mqttPort, 5);
@@ -393,7 +520,11 @@ void setup() {
   if (shouldSaveConfig) {
     DeviceConfig candidate = config;
     strlcpy(candidate.name, nameParam.getValue(), sizeof(candidate.name));
-    if (!candidate.name[0]) strlcpy(candidate.name, "roller-blind", sizeof(candidate.name));
+    // Preserve the previous name if the captive portal submitted an invalid one.
+    String portalName = candidate.name;
+    portalName.trim(); portalName.toLowerCase();
+    if (DeviceName::valid(portalName.c_str())) portalName.toCharArray(candidate.name, sizeof(candidate.name));
+    else strlcpy(candidate.name, config.name, sizeof(candidate.name));
     strlcpy(candidate.mqttServer, serverParam.getValue(), sizeof(candidate.mqttServer));
     strlcpy(candidate.mqttPort, portParam.getValue(), sizeof(candidate.mqttPort));
     strlcpy(candidate.mqttUser, userParam.getValue(), sizeof(candidate.mqttUser));
@@ -408,6 +539,9 @@ void setup() {
     MDNS.addService("http", "tcp", 80);
     MDNS.addService("ws", "tcp", 81);
   }
+  firmwareToken = String(ESP.random(), HEX) + String(ESP.random(), HEX) + String(ESP.random(), HEX);
+  server.collectHeaders("X-Firmware-Token", "X-Firmware-Size");
+  server.on("/api/firmware", HTTP_POST, handleFirmwareComplete, handleFirmwareUpload);
   server.on("/", HTTP_GET, []() { server.sendHeader("Cache-Control", "no-store"); server.send_P(200, "text/html; charset=utf-8", INDEX_HTML); });
   server.on("/api/status", HTTP_GET, []() { server.sendHeader("Cache-Control", "no-store"); server.send(200, "application/json; charset=utf-8", statusJson()); });
   server.on("/api/config", HTTP_GET, []() { server.sendHeader("Cache-Control", "no-store"); server.send(200, "application/json; charset=utf-8", configJson()); });
@@ -417,10 +551,11 @@ void setup() {
     if (ok) server.send(200, "application/json; charset=utf-8", statusJson());
     else respondError(error == saveError && error.length() ? 500 : 400, error);
   });
+  server.on("/api/name", HTTP_POST, handleDeviceName);
   server.on("/api/limits", HTTP_POST, handleLimits);
   server.on("/api/direction", HTTP_POST, handleDirection);
   server.on("/api/mqtt", HTTP_POST, handleMqttSettings);
-  server.onNotFound([]() { respondError(404, "Nicht gefunden."); });
+  server.onNotFound([]() { respondError(404, "Not found."); });
   server.begin();
   webSocket.begin(); webSocket.onEvent(webSocketEvent);
   psclient.setCallback(mqttCallback);
@@ -434,10 +569,22 @@ void setup() {
 }
 
 void loop() {
-  ArduinoOTA.handle();
+  if (nameRestartPending) {
+    haltMotor();
+    if (uint32_t(millis() - nameRestartRequestedAt) >= 1200U) ESP.restart();
+    yield(); return;
+  }
+  if (firmwareUpload.state == FirmwareUpload::Complete) {
+    haltMotor();
+    if (uint32_t(millis() - firmwareRestartRequestedAt) >= 1200U) ESP.restart();
+    yield();
+    return;
+  }
+  if (!firmwareUpload.busy()) ArduinoOTA.handle();
   MDNS.update();
   webSocket.loop();
   server.handleClient();
+  if (nameRestartPending || firmwareUpload.busy()) { haltMotor(); yield(); return; }
   // Connection attempts can block inside the TCP library: do them only at rest.
   // An already connected broker continues receiving commands during motion.
   if (config.mqttServer[0]) {

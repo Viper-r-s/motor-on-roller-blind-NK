@@ -180,4 +180,6 @@ G:\Meine\ Ablage\Sicherungen\Raspi-Sicherungen\Node\ MCU\ ESP8266\motor-on-rolle
  G:\Meine\ Ablage\Sicherungen\Raspi-Sicherungen\Node\ MCU\ ESP8266\motor-on-roller-blind-ws-master\v2\motor_on_a_roller_blind-ws\.build\sketch\NidayandHelper.h \
  G:\Meine\ Ablage\Sicherungen\Raspi-Sicherungen\Node\ MCU\ ESP8266\motor-on-roller-blind-ws-master\v2\motor_on_a_roller_blind-ws\.build\sketch\BlindMotion.h \
  G:\Meine\ Ablage\Sicherungen\Raspi-Sicherungen\Node\ MCU\ ESP8266\motor-on-roller-blind-ws-master\v2\motor_on_a_roller_blind-ws\.build\sketch\StatusSchedule.h \
+ G:\Meine\ Ablage\Sicherungen\Raspi-Sicherungen\Node\ MCU\ ESP8266\motor-on-roller-blind-ws-master\v2\motor_on_a_roller_blind-ws\.build\sketch\FirmwareUpload.h \
+ G:\Meine\ Ablage\Sicherungen\Raspi-Sicherungen\Node\ MCU\ ESP8266\motor-on-roller-blind-ws-master\v2\motor_on_a_roller_blind-ws\.build\sketch\DeviceName.h \
  G:\Meine\ Ablage\Sicherungen\Raspi-Sicherungen\Node\ MCU\ ESP8266\motor-on-roller-blind-ws-master\v2\motor_on_a_roller_blind-ws\.build\sketch\index_html.h

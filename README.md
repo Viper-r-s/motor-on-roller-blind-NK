@@ -1,18 +1,35 @@
-# Rollladensteuerung – ESP8266, Version 1.6.0
+# Rollladensteuerung – ESP8266, Version 1.7.0
 
 Überarbeitete Fassung von [motor-on-roller-blind-ws](https://github.com/nidayand/motor-on-roller-blind-ws), MIT-Lizenz. Bestehende Motorverdrahtung bleibt unverändert: `Stepper_28BYJ_48(D1, D3, D2, D4)`.
 
+## Neu in 1.7.0: Gerätename und englische Oberfläche
+
+Die gesamte Geräte-Weboberfläche ist jetzt **Englisch**: Beschriftungen, Hilfetexte, Status-/Fehlermeldungen, MQTT- und Firmware-Upload-Dialog. Die Sprache ist fest Englisch, ein Sprachumschalter ist nicht erforderlich. Eigene Gerätenamen und andere gespeicherte Benutzereingaben werden natürlich nicht übersetzt.
+
+Unter **Device name** lässt sich der Name direkt ändern:
+
+1. In **Device name / hostname** den gewünschten Namen eingeben, z. B. `bedroom-blind`.
+2. **Save name & restart** drücken. Erlaubt sind 1–31 ASCII-Buchstaben, Ziffern und Bindestriche; keine Leerzeichen, Punkte oder `.local`-Endung und kein Bindestrich am Anfang/Ende. Neue Namen werden kleingeschrieben gespeichert.
+3. Bei einer tatsächlichen Änderung wird der Motor gestoppt, die aktuelle Position zusammen mit dem Namen gespeichert und nach der HTTP-Antwort ein kurzer Neustart ausgeführt. So verwenden DHCP/WLAN, mDNS und ArduinoOTA beim nächsten Start denselben Namen. Ein unveränderter Name löst keinen Neustart aus.
+4. Die Seite zeigt den neuen **Device address**-Link, z. B. `http://bedroom-blind.local/`, sowie die aktuelle **IP address** als Ausweichadresse an. Wurde die Seite über den alten `.local`-Namen geöffnet, bei Bedarf nach dem Neustart den neuen Link oder die IP verwenden. Ob `.local` aufgelöst wird und wann der Router den DHCP-Namen anzeigt, hängt auch vom Netzwerk/Client ab.
+
+Der Name bleibt im vorhandenen Feld `config_name` in `/config.json` gespeichert und wird nach Neustarts wieder geladen. Positionsgrenzen, Richtung, MQTT-Einstellungen und chipbasierte MQTT-Topics bleiben unverändert. Ein Speicherfehler übernimmt den neuen Namen nicht und löst keinen Neustart aus. Eingabeentwürfe bleiben bei Hintergrundupdates erhalten.
+
+Die Bootdiagnose und die Heap-Pufferkorrektur des aktualisierten Benutzerstands sind weiterhin vorhanden. Bibliotheken, Flashaufteilung und Dateisystemformat wurden für diese Änderung nicht gewechselt.
+
+**Installation:** Wenn bereits 1.6.0 mit Web-Upload auf dem Gerät läuft, kann die neue `motor_on_a_roller_blind-ws.ino.bin` im Bereich **Firmware update** hochgeladen werden. Ohne Web-Upload wie bisher USB/ArduinoOTA verwenden. Das ZIP nicht als Firmware auswählen.
+
 ## Neu in 1.6.0: Firmware über die Weboberfläche aktualisieren
 
-Die vorhandenen Funktionen bleiben erhalten. Zusätzlich gibt es unten auf der Hauptseite den Bereich **Firmware-Update** mit Dateiauswahl, Upload-Fortschritt und automatischer Wiederverbindung nach dem Neustart.
+Die vorhandenen Funktionen bleiben erhalten. Zusätzlich gibt es unten auf der Hauptseite den Bereich **Firmware update** mit Dateiauswahl, Upload-Fortschritt und automatischer Wiederverbindung nach dem Neustart.
 
 **Einmalige Installation dieser Version:** Die bisherige Firmware ohne Web-Upload kann diese neue Seite noch nicht anbieten. Version 1.6.0 daher einmal wie bisher per Arduino IDE/USB oder über das schon vorhandene ArduinoOTA aufspielen. Danach sind weitere Updates direkt über die Webseite möglich, solange die zukünftig hochgeladene Firmware diese Funktion ebenfalls enthält.
 
 ### Bedienung
 
-1. Die normale Geräte-Webseite öffnen und zu „Firmware-Update“ scrollen. Aktuelle Version und maximal zulässige Dateigröße werden angezeigt.
-2. Eine **unkomprimierte `.bin`-Firmware für den verwendeten ESP8266 und dessen Flashlayout** auswählen. Beispielsweise die mitgelieferte Datei `build/esp8266.esp8266.nodemcu-1.6.0/motor_on_a_roller_blind-ws.ino.bin`. Nicht das ZIP-Archiv, kein Dateisystem-Abbild und keine ESP32-Firmware auswählen.
-3. Die Checkbox für Motorstopp/Neustart bestätigen und „Firmware hochladen & installieren“ drücken.
+1. Die normale Geräte-Webseite öffnen und zu „Firmware update“ scrollen. Aktuelle Version und maximal zulässige Dateigröße werden angezeigt.
+2. Eine **unkomprimierte `.bin`-Firmware für den verwendeten ESP8266 und dessen Flashlayout** auswählen. Beispielsweise die mitgelieferte Datei `build/esp8266.esp8266.nodemcu-1.7.0/motor_on_a_roller_blind-ws.ino.bin`. Nicht das ZIP-Archiv, kein Dateisystem-Abbild und keine ESP32-Firmware auswählen.
+3. Die Checkbox für Motorstopp/Neustart bestätigen und „Upload & install firmware“ drücken.
 4. Der Motor wird gestoppt und die aktuelle Position gespeichert. Kann nicht gespeichert werden, wird der Upload mit einer Fehlermeldung abgebrochen.
 5. Während der Übertragung sind Motorsteuerung und Einstellungsänderungen gesperrt. Die Stromversorgung nicht unterbrechen.
 6. Erst nach vollständiger Übertragung und erfolgreichem Abschluss wird der Neustart ausgelöst. Die Seite wartet auf eine neue Geräte-Bootkennung und lädt sich anschließend neu. 100 % Upload allein wird **nicht** als erfolgreiches Update oder Neustart interpretiert.
@@ -52,8 +69,8 @@ Das neue `sketch.yaml` enthält ein reproduzierbares Arduino-CLI-Profil mit alle
 
 1. Falls das Gerät noch kein WLAN kennt, mit dem Access Point **F1** verbinden. Das bestehende AP-Passwort bleibt `12345678`. WLAN über das Konfigurationsportal einrichten.
 2. Im normalen WLAN `http://<IP-Adresse>/` oder `http://<Gerätename>.local/` öffnen. Standardname bei neuer Konfiguration: `roller-blind`.
-3. Unter „Anfang und Ende anpassen“ manuell zur offenen Position fahren, stoppen und „Aktuell als Anfang“ drücken. Danach zur geschlossenen Position fahren, stoppen und „Aktuell als Ende“ drücken.
-4. Alternativ beide Werte direkt bearbeiten und „Grenzen speichern“ drücken. Anfang muss kleiner als Ende sein. Zulässig sind ganze Schrittkoordinaten von −1.000.000.000 bis +1.000.000.000.
+3. Unter „Adjust start and end positions“ manuell zur offenen Position fahren, stoppen und „Set current as start (open)“ drücken. Danach zur geschlossenen Position fahren, stoppen und „Set current as end (closed)“ drücken.
+4. Alternativ beide Werte direkt bearbeiten und „Save limits“ drücken. Anfang muss kleiner als Ende sein. Zulässig sind ganze Schrittkoordinaten von −1.000.000.000 bis +1.000.000.000.
 5. Die normalen Öffnen-/Schließen-Tasten und der Positionsregler verwenden die gespeicherten Grenzen. 0 % bedeutet offen/Anfang, 100 % geschlossen/Ende.
 
 **Koordinaten bleiben erhalten:** Wird eine andere Stelle als Anfang gespeichert, wird die aktuelle Position nicht auf null zurückgesetzt; der Endpunkt verschiebt sich nicht mit. Prozentwerte werden aus `(Position − Anfang) / (Ende − Anfang)` berechnet. Beide Endpunkte können dadurch unabhängig geändert werden. Bei ungünstigen alten Grenzen beide Zahlen gemeinsam eingeben.
@@ -129,12 +146,12 @@ Die HTML-Seite liegt in der Firmware. Die Motorpins und die logische Schritt-Ein
 Mit einer aktuellen Arduino CLI im Projektordner:
 
 ```sh
-arduino-cli compile --profile modern --warnings all --output-dir build/esp8266.esp8266.nodemcu-1.6.0 .
+arduino-cli compile --profile modern --warnings all --output-dir build/esp8266.esp8266.nodemcu-1.7.0 .
 ```
 
 Das Profil in `sketch.yaml` installiert die festgelegten aktuellen Versionen bei Bedarf isoliert und wählt das richtige Flashlayout. Es wurde tatsächlich mit diesem Profil gebaut; es sind keine absoluten Workspace-Pfade nötig.
 
-Neue Firmware: `build/esp8266.esp8266.nodemcu-1.6.0/motor_on_a_roller_blind-ws.ino.bin`. Der Build verwendet QIO/40 MHz Flash, 80 MHz CPU, 4 MB Flash und 1 MB SPIFFS. Die alten vorhandenen Build-Verzeichnisse wurden nicht überschrieben; im neuen Lieferarchiv liegt nur die neue Firmware.
+Neue Firmware: `build/esp8266.esp8266.nodemcu-1.7.0/motor_on_a_roller_blind-ws.ino.bin`. Der Build verwendet QIO/40 MHz Flash, 80 MHz CPU, 4 MB Flash und 1 MB SPIFFS. Die alten vorhandenen Build-Verzeichnisse wurden nicht überschrieben; im neuen Lieferarchiv liegt nur die neue Firmware.
 
 ### Kompatibilität des gespeicherten Dateisystems
 
@@ -149,6 +166,7 @@ ArduinoOTA bleibt zusätzlich zum Web-Upload erhalten. Es wurde **kein Upload au
 - `GET /api/status`: laufende Position und Zustand.
 - `GET /api/config`: gespeicherte Einstellungen; nur Passwortstatus, kein Passwort.
 - `POST /api/command`: `command`, z. B. `(0)` oder `50`.
+- `POST /api/name`: `name` (normalisierter Hostname); liefert gespeicherte Konfiguration mit `restartPending` und `ipAddress`.
 - `POST /api/limits`: `startPosition`, `maxPosition`.
 - `POST /api/direction`: `clockwise=true|false`.
 - `POST /api/mqtt`: `mqtt_server`, `mqtt_port`, `mqtt_uid`, optional `mqtt_pwd` und `clear_password=true`.
@@ -157,6 +175,13 @@ ArduinoOTA bleibt zusätzlich zum Web-Upload erhalten. Es wurde **kein Upload au
 Einstellungs-/Befehls-POSTs als `application/x-www-form-urlencoded`, Firmware als `multipart/form-data`. Erfolgsantwort: JSON; ungültige Werte: HTTP 400; Speicherfehler: HTTP 500.
 
 ## Prüfungen
+
+Zusätzlich für Gerätenamen/Englisch:
+
+- `tests/device_name_test.cpp`: tatsächlich verwendete Namensvalidierung mit gültigen Namen, Grenzlängen, Leerzeichen, Umlauten, Punkten, Bindestrichpositionen und unsicheren Zeichen.
+- `tests/name_browser_test.cjs`: tatsächliche englische Seite gegen simulierte API; Feld/Links, Eingabeschutz, Entwürfe, Speicherfehler, unveränderter Name, Kleinschreibung, Neustartsperre und Wiederverbindung/Reload. Bestätigt auch, dass Grenzen und MQTT-Daten danach sichtbar bleiben.
+- Der Speichertest lädt den Namen zusammen mit beiden Grenzen in eine frische Helferinstanz. Das ist ein Hosttest, keine reale ESP-SPIFFS-/DHCP-/mDNS-/OTA-Prüfung.
+
 
 Zusätzlich für den Web-Upload:
 
@@ -177,7 +202,10 @@ g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=undefined,address tests/motion_t
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=undefined,address -I tests/host -I /pfad/zu/ArduinoJson/src tests/helper_test.cpp NidayandHelper.cpp -o /tmp/blind-helper-test
 /tmp/blind-helper-test
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=undefined,address tests/firmware_upload_test.cpp -o /tmp/blind-upload-test
-/tmp/blind-upload-test build/esp8266.esp8266.nodemcu-1.6.0/motor_on_a_roller_blind-ws.ino.bin
+/tmp/blind-upload-test build/esp8266.esp8266.nodemcu-1.7.0/motor_on_a_roller_blind-ws.ino.bin
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=undefined,address tests/device_name_test.cpp -o /tmp/blind-name-test
+/tmp/blind-name-test
+PLAYWRIGHT_MODULE=/pfad/zu/playwright-core node tests/name_browser_test.cjs
 PLAYWRIGHT_MODULE=/pfad/zu/playwright-core node tests/firmware_browser_test.cjs
 PLAYWRIGHT_MODULE=/pfad/zu/playwright-core node tests/browser_test.cjs
 ```

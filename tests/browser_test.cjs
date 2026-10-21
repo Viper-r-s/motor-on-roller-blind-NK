@@ -31,7 +31,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright-core')
       const values = Object.fromEntries(new URLSearchParams(req.postData() || ''));
       if (req.method() === 'POST') {
         calls.push({endpoint, values});
-        if (failSave) return route.fulfill({status:500, json:{error:'Speichern im Flash fehlgeschlagen.'}});
+        if (failSave) return route.fulfill({status:500, json:{error:'Failed to save to flash.'}});
         if (endpoint === '/api/limits') { c.startPosition = Number(values.startPosition); c.maxPosition = Number(values.maxPosition); }
         if (endpoint === '/api/direction') c.clockwise = values.clockwise === 'true';
         if (endpoint === '/api/mqtt') {
@@ -57,34 +57,34 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright-core')
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     await page.waitForFunction(() => document.querySelector('#mqtt-server').value === 'broker.local');
     assert.equal(await page.locator('#position').textContent(), '20');
-    assert.match(await page.locator('#saved-values').textContent(), /125 Schritte/);
+    assert.match(await page.locator('#saved-values').textContent(), /125 steps/);
     assert.equal(await page.locator('#mqtt-user').inputValue(), 'test-user');
     assert.equal(await page.locator('#mqtt-password').inputValue(), '');
-    assert.match(await page.locator('#password-state').textContent(), /Passwort ist gespeichert/);
+    assert.match(await page.locator('#password-state').textContent(), /password is saved/);
     console.log('PASS: loaded saved values, live position and masked password');
 
     await page.locator('#start-position').fill('200');
     c.startPosition = 150; c.configRevision++; s.configRevision = c.configRevision;
-    await page.waitForFunction(() => document.querySelector('#saved-values').textContent.includes('150 Schritte'));
+    await page.waitForFunction(() => document.querySelector('#saved-values').textContent.includes('150 steps'));
     assert.equal(await page.locator('#start-position').inputValue(), '200');
     await page.locator('#end-position').fill('100');
     const before = calls.length;
     await page.locator('#limits-form button').click();
-    assert.match(await page.locator('#notice').textContent(), /Anfang muss kleiner/);
+    assert.match(await page.locator('#notice').textContent(), /Start must be less/);
     assert.equal(calls.length, before);
     await page.locator('#end-position').fill('900');
     await page.locator('#limits-form button').click();
-    await page.waitForFunction(() => document.querySelector('#saved-values').textContent.includes('900 Schritte'));
+    await page.waitForFunction(() => document.querySelector('#saved-values').textContent.includes('900 steps'));
     assert.deepEqual(calls.at(-1), {endpoint:'/api/limits', values:{startPosition:'200', maxPosition:'900'}});
     assert.equal(s.currentPosition, 300);
-    await page.getByRole('button', {name: 'Aktuell als Anfang (offen)', exact:true}).click();
+    await page.getByRole('button', {name: 'Set current as start (open)', exact:true}).click();
     await page.waitForFunction(() => document.querySelector('#start-position').value === '300');
     assert.equal(c.startPosition, 300); // No rebasing to zero.
     console.log('PASS: endpoint editing, validation, dirty drafts, set-current calibration');
 
     await page.locator('#clockwise').selectOption('true');
     await page.locator('#direction-form button').click();
-    await page.waitForFunction(() => document.querySelector('#saved-values').textContent.includes('Im Uhrzeigersinn'));
+    await page.waitForFunction(() => document.querySelector('#saved-values').textContent.includes('Clockwise'));
     assert.equal(c.clockwise, true); assert.equal(s.moving, false);
     console.log('PASS: runtime direction setting');
 
@@ -100,24 +100,24 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright-core')
     assert.ok(!(await page.locator('body').textContent()).includes('test-only-password'));
     await page.locator('#clear-password').check();
     await page.locator('#mqtt-form button').click();
-    await page.waitForFunction(() => document.querySelector('#password-state').textContent.includes('Kein Passwort'));
+    await page.waitForFunction(() => document.querySelector('#password-state').textContent.includes('No password'));
     assert.equal(c.mqtt_password_set, false);
     console.log('PASS: MQTT settings, password keep/replace/clear without echo');
 
-    await page.getByRole('button', {name: 'Manuell auf ↑', exact:true}).click();
-    await page.waitForFunction(() => document.querySelector('#motion-state').textContent.includes('Fährt auf'));
-    await page.getByRole('button', {name: 'Stopp', exact:true}).first().click();
-    await page.waitForFunction(() => document.querySelector('#motion-state').textContent === 'Antrieb steht');
+    await page.getByRole('button', {name: 'Manual up ↑', exact:true}).click();
+    await page.waitForFunction(() => document.querySelector('#motion-state').textContent.includes('Moving up'));
+    await page.getByRole('button', {name: 'Stop', exact:true}).first().click();
+    await page.waitForFunction(() => document.querySelector('#motion-state').textContent === 'Motor stopped');
     await page.locator('#position-slider').fill('50');
     await page.locator('#position-slider').dispatchEvent('change');
-    await page.waitForFunction(() => document.querySelector('#motion-state').textContent.includes('Fährt ab'));
+    await page.waitForFunction(() => document.querySelector('#motion-state').textContent.includes('Moving down'));
     assert.equal(calls.at(-1).values.command, '50');
     console.log('PASS: manual move, stop and automatic percentage command');
 
     failSave = true;
     await page.locator('#start-position').fill('350');
     await page.locator('#limits-form button').click();
-    await page.waitForFunction(() => document.querySelector('#notice').textContent.includes('fehlgeschlagen'));
+    await page.waitForFunction(() => document.querySelector('#notice').textContent.includes('Failed'));
     assert.equal(c.startPosition, 300);
     assert.equal(await page.locator('#start-position').inputValue(), '350');
     failSave = false;

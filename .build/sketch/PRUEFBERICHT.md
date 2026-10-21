@@ -1,85 +1,59 @@
 #line 1 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\PRUEFBERICHT.md"
-# Prüfbericht – Rollladensteuerung 1.5.0
+# Prüfbericht – Rollladensteuerung 1.7.0
 
-Datum: 21.10.2026. Auftrag: Bibliotheken und ESP8266-Unterbau aktualisieren, Funktionen und gespeicherte Daten erhalten.
+Datum: 22.10.2026. Auftrag: Gerätenamen über die Weboberfläche ändern und die Oberfläche auf Englisch umstellen.
 
-## Verwendete Versionen
+## Umsetzung
 
-Aktuelle stabile Releases laut aktualisiertem Arduino-Bibliotheksindex und offiziellen Releases:
+- Neue englische Einstellung **Device name / hostname** und Schaltfläche **Save name & restart**.
+- Neue API `POST /api/name`, gespeichert im vorhandenen `config_name`-Feld. Namen werden getrimmt, kleingeschrieben und als einzelnes DNS-Label mit 1–31 Zeichen geprüft.
+- Nur Buchstaben, Ziffern und Bindestriche, kein führender/abschließender Bindestrich, keine Leerzeichen, Punkte oder `.local`-Endung.
+- Bei Änderung: Motor stoppen, aktuelle Position und Name erfolgreich speichern, Antwort mit neuem Namen/Links senden, nach 1.200 ms kontrolliert neu starten. Der Neustart sorgt dafür, dass der Name für DHCP/WLAN, mDNS und ArduinoOTA beim Initialisieren verwendet wird; `ArduinoOTA.setHostname` erlaubt in diesem Core keinen nachträglichen Wechsel an der bereits initialisierten Instanz.
+- Bei Speicherfehler kein neuer aktiver Name und kein geplanter Neustart. Unveränderter Name ist eine erfolgreiche Anfrage ohne Neustart.
+- Während des ausstehenden Neustarts werden Motorbefehle und Änderungen gesperrt, einschließlich neuer Firmware-Uploads.
+- Die Webseite zeigt die neue `.local`-Adresse und die IP-Adresse als Links an. Bei Aufruf über den alten Namen kann der Client die Verbindung verlieren; die neuen Links dienen dann zum erneuten Öffnen. Physische Namensauflösung ist nicht getestet.
+- Feste englische Weboberfläche einschließlich serverseitiger Speicher-, MQTT-, Befehls- und Firmware-Upload-Fehlermeldungen; keine neue Laufzeitabhängigkeit und kein externer Übersetzungsdienst.
+- Min/Max, Position, Laufrichtung, MQTT-Felder/Topics, Flashaufteilung und Bibliotheksversionen bleiben kompatibel. Heap-Lesepufferkorrektur und Bootdiagnose sind weiterhin vorhanden. Vorhandene Logs und alte Build-Artefakte wurden nicht ersetzt.
 
-- ESP8266 Arduino Core 3.1.2.
-- ArduinoJson 7.4.3.
-- WiFiManager 2.0.17.
-- WebSockets 2.7.2.
-- PubSubClient 2.8.0 und Stepper_28BYJ_48 1.0.0 sind weiterhin aktuell; keine neueren stabilen Releases vorhanden.
+## Tatsächlich kompilierte Firmware
 
-Die alten JSON-5-Schnittstellen wurden vollständig ersetzt. Gespeicherte JSON-Feldnamen und MQTT-Protokoll bleiben kompatibel. Der aktuelle WiFiManager erhält den Hostnamen über seine aktuelle Schnittstelle; der mDNS-Responder wird in der Hauptschleife bedient.
+Isolierter Arduino-CLI-Profilbuild `modern` mit `--warnings all` erfolgreich:
 
-## Reale Firmware-Kompilierung
+- ESP8266-Core 3.1.2; ArduinoJson 7.4.3; WiFiManager 2.0.17; WebSockets 2.7.2; PubSubClient 2.8.0; Stepper_28BYJ_48 1.0.0.
+- FQBN: `esp8266:esp8266:nodemcu:eesz=4M1M,xtal=80` (NodeMCU 0.9 / ESP-12).
+- QIO, 40 MHz Flash, 80 MHz CPU, 4 MB Flash / 1 MB SPIFFS.
+- Globale/statische RAM-Daten: 36.056 / 80.192 Bytes (44 %).
+- IRAM einschließlich 32-KB-Instruktionscache: 61.007 / 65.536 Bytes (93 %), davon 28.239 Bytes IRAM-Code.
+- Code im Flash: 439.476 / 1.048.576 Bytes (41 %).
+- BIN-Dateigröße: 480.016 Bytes.
+- BIN-SHA-256: `5e302c330d71b3764bcf14b827b20016f5284df8c7363950b93e9be6bad73f19`.
 
-Erfolgreich mit dem mitgelieferten `sketch.yaml`, Profil `modern`, und `--warnings all`:
-
-```sh
-arduino-cli compile --profile modern --warnings all --output-dir build/esp8266.esp8266.nodemcu-1.5.0 .
-```
-
-Das Profil installiert die angegebenen Abhängigkeiten isoliert. Damit wurde nicht versehentlich gegen noch vorhandene alte Bibliotheken gebaut.
-
-- Ziel: `esp8266:esp8266:nodemcu:eesz=4M1M,xtal=80` (NodeMCU 0.9 / ESP-12).
-- Flashmodus QIO, Flashfrequenz 40 MHz, CPU 80 MHz.
-- RAM, globale/statische Daten: 34.860 / 80.192 Bytes (43 %).
-- IRAM inklusive reserviertem Instruktionscache: 61.007 / 65.536 Bytes (93 %); davon 32.768 Bytes Cache und 28.239 Bytes IRAM-Code.
-- Code im Flash: 427.172 / 1.048.576 Bytes (40 %).
-- BIN-Abbildgröße: 466.560 Bytes.
-- BIN-SHA-256: `6f263699ea05e02d76c78a43be1d4a7ce4bbe74bac4b8e06a1586378b437d63c`.
-
-Keine Buildfehler. Bei aktivierten vollständigen Warnungen: 15 SPIFFS-Deprecation-Hinweise (bewusst für Alt-Daten beibehalten), eine Signedness-Warnung in PubSubClient 2.8 und zwei Python-SyntaxWarnings im Core-Werkzeug `elf2bin.py`. Diese stammen nicht aus der JSON-Migration. Es wurden keine Fremdbibliotheken geändert oder Warnungen pauschal unterdrückt.
-
-## Speicherkompatibilität
-
-Das bisherige Dateisystem bleibt SPIFFS, nicht LittleFS. Ein Wechsel des On-Flash-Formats ohne Datenmigration würde bestehende Konfigurationen gefährden.
-
-- Vorhandener alter Bereich: `0x40500000` bis `0x405fb000`.
-- Neues 1-MB-FS-Profil: `0x40500000` bis `0x405fa000`.
-- Gleicher Anfang, 256 Bytes Seitengröße und 8192 Bytes Blockgröße.
-- Beide Bereiche umfassen 125 vollständige SPIFFS-Blöcke; der alte zusätzliche 4-KB-Rest ist kein zusätzlicher Block.
-
-**Offline-Abbildprüfung:** Mit dem originalen `mkspiffs` aus dem 2.4.2-Paket wurde ein Abbild einschließlich Legacy-`config.json` erzeugt. Die zusätzlichen 4096 Bytes waren vollständig gelöscht (`0xFF`). Nach Begrenzung auf den neuen Bereich wurde es mit dem `mkspiffs` des 3.1.2-Cores gelesen; die extrahierte `config.json` war byteidentisch. Dies ist kein Mounttest auf echter Hardware.
-
-Die neue Speicherinitialisierung schaltet automatisches Formatieren bei Mountfehlern aus. Nur wenn der gesamte ausgewählte Bereich erfolgreich als gelöscht gelesen wurde, wird ein frisches Dateisystem initialisiert. Vorhandene oder nicht lesbare Daten werden nicht formatiert. Bei falscher Flashaufteilung zeigt die Oberfläche einen Speicherfehler.
+Keine Buildfehler. Bekannte Warnungsquellen im Softwarestand sind SPIFFS-Deprecation, PubSubClient-Signedness und Python-Escapes in `elf2bin.py`; tatsächliche Warnungen im inkrementellen Log hängen vom Übersetzungscache ab. Keine Fremdbibliotheken wurden dafür geändert oder Warnungen pauschal unterdrückt.
 
 ## Erfolgreiche Softwareprüfungen
 
-### Native C++-Tests, AddressSanitizer und UndefinedBehaviorSanitizer
+### Native Tests unter AddressSanitizer/UndefinedBehaviorSanitizer
 
-- Tatsächliche `BlindMotion`- und `StatusSchedule`-Klassen: strikte Befehlsprüfung, ungültige Grenzen, Offset-Koordinaten, automatische Ziele in beide Richtungen, manuelles Stoppen, große Werte und Rechenüberläufe.
-- 5.000-ms-MQTT-Termin während der Fahrt, keine periodischen Termine im Stillstand, unabhängige Webupdates und `millis()`-Überlauf.
-- Tatsächliche `NidayandHelper.cpp` mit ArduinoJson **7.4.3** und Host-Peripheriemocks: Lebensdauer der geparsten Daten, alte Feldnamen, Speichern/Laden, Sonderzeichen, begrenzte Dateigrößen, Zurückweisen nicht objektförmiger JSON-Wurzeln, Backup-Wiederherstellung und fehlgeschlagene/partielle Schreibvorgänge.
-- Speicherinitialisierung: vorhandenes Volume einbinden, nichtleeren Flash nicht formatieren, Lesefehler/ungültige Grenzen abweisen, vollständig gelöschten Bereich initialisieren.
-- MQTT-Wiederverbindungsbegrenzung, Verhalten ohne WLAN, Anmeldung und Topic-Subscription.
+- `device_name_test.cpp`: echte Namensvalidierung, zulässige Namen, 31-/32-Zeichen-Grenze, ungültige/unsichere Zeichen, Bindestrichpositionen, UTF-8 und Null-/Leereingaben.
+- `helper_test.cpp`: tatsächlicher Speicher-/MQTT-Helfer mit ArduinoJson 7 und Host-Peripheriemocks; Name und beide Positionsgrenzen nach Speichern in frischer Helferinstanz unverändert gelesen. Weiterhin Schreibfehler, Backup-Wiederherstellung, Speicherinitialisierung und MQTT-Wiederverbindungsbegrenzung.
+- `motion_test.cpp`: bestehende Positionslogik und 5-Sekunden-MQTT-Timer einschließlich `millis()`-Überlauf.
+- `firmware_upload_test.cpp`: bestehender tatsächlicher Streaming-Controller mit Fake-Flash-Writer; außerdem die neu kompilierte BIN vollständig durch den Controller gestreamt und byteidentisch verglichen.
 
-### Browserprüfung
+### Browserprüfungen: echte Seite, simulierte Geräte-API
 
-Tatsächliche HTML-Seite in headless Chrome, mobile Ansicht (420 px), mit **simulierter Geräte-API**:
+- `name_browser_test.cjs`: `lang=en`, englische Abschnitte/Status, gespeicherter Name und Links; ungültige Eingaben blockiert; Entwürfe bei Hintergrundaktualisierung erhalten; englischer Speicherfehler erhält alten Namen und Entwurf; unveränderter Name ohne Neustart; neuer Name kleingeschrieben; Motor/Einstellungen/Upload während Neustart gesperrt; erst neue Bootkennung löst Reload aus; Grenzen und MQTT-Einstellungen bleiben sichtbar.
+- `browser_test.cjs`: vollständige bestehende Steuerungs-/Positions-/Richtungs-/MQTT-Bedienung einschließlich Speicherfehler und Wiederverbindung gegen die englische Seite bestanden.
+- `firmware_browser_test.cjs`: bestehender Web-Upload einschließlich Multipart-Daten, Dateifilter, Sperre, Fehler, Fortschritt und Neustart-Erkennung gegen die englische Seite bestanden. Fortschritt im Interceptiontest simuliert.
+- Keine JavaScript-Laufzeitfehler und kein horizontaler Überlauf bei 420 px Mobilbreite. Screenshot der englischen Seite mit geändertem Namen zusätzlich angesehen.
 
-- Gespeicherte und laufende Werte getrennt anzeigen.
-- Grenzen direkt ändern, aktuelle Position übernehmen, ungültige Eingaben abweisen.
-- Entwürfe bei Hintergrundupdates und Wiederverbindung erhalten.
-- Laufrichtung ändern.
-- MQTT-Host/Port/Benutzer ändern; Passwort behalten/ersetzen/löschen, ohne es anzuzeigen.
-- Manuelle Befehle, Stoppen, Prozentziel, Speicherfehler, Unterbrechung/Wiederverbindung und Neuladen gespeicherter Werte.
-- HTML-sichere Gerätenamen, kein horizontaler Mobil-Überlauf und keine JavaScript-Laufzeitfehler.
+## Nicht getestet
 
-## Nicht durchgeführt
+Kein Flashen, keine physische Motorfahrt, kein realer ESP-Neustart und keine echte DHCP-/mDNS-/Router-/ArduinoOTA-Namensübernahme. Die Browserprüfung simuliert Antwort und Neustart; der Speichertest verwendet Host-Mocks statt echtem SPIFFS. Erfolgreiche Kompilierung ist kein Hardware-Kompatibilitätsnachweis. MQTT/WLAN/OTA und Erhalt der Daten auf dem Gerät sind nicht durch einen neuen Hardwareversuch bestätigt.
 
-Kein Flashen, keine physische Motorfahrt und kein Test über einen echten MQTT-Broker, OTA oder das reale WLAN. API-/Browserprüfungen verwenden einen simulierten Server, Flash-/Netzwerkprüfungen des Helfers Host-Mocks. Die Zeitplanung ist keine Echtzeitgarantie bei Netzstörungen. Die Gerätekompatibilität nach einem Core-Sprung muss beim tatsächlichen Aufspielen kontrolliert werden.
+## Dateien und Lieferung
 
-## Erhaltener Altbestand und Arbeitsdaten
-
-Die ursprünglich vorhandenen Build-Dateien und Version 1.4.0 wurden nicht überschrieben.
-
-- Original-BIN-SHA-256: `8a0393b7a91dac3e2403af67608a65ae2a26e3e0e2796b376fd14c543d5f2f26`.
-- 1.4.0-BIN-SHA-256: `deee1486c6a237e477c000bb263cfb1ed4854cb9813cad5608c7b4c274453dd3`.
-- Quelltext-Sicherung vor der Modernisierung im ursprünglichen Workspace: `../.tmp/roller-blind-v1.4.0/`.
-- Werkzeuge, Logs, Screenshot und SPIFFS-Abbildprüfung: `../.tmp/roller-blind-tools/`.
-- Lieferarchiv enthält nur den neuen Quellstand und die neue BIN, keine alten Build-Abbilder und keine temporären Werkzeuge.
+- Neues Abbild: `build/esp8266.esp8266.nodemcu-1.7.0/motor_on_a_roller_blind-ws.ino.bin`.
+- Der vollständige Ausgangsstand liegt lokal unter `../.tmp/roller-blind-pre-name-english/`.
+- Build und Logs: `../.tmp/roller-blind-firmware-name-english/` und `../.tmp/roller-blind-tools/`.
+- Das neue ZIP enthält Quellen, Tests, Anleitung/Prüfbericht, Buildprofil und nur die neue BIN. Keine alten Abbilder, seriellen Logs oder privaten Konfigurationsdateien.
+- Falls 1.6.0 bereits installiert ist, kann die BIN über dessen **Firmware update** eingespielt werden. Andernfalls zunächst wie bisher USB/ArduinoOTA.

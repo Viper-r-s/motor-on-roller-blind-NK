@@ -34,7 +34,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright-core')
         assert.ok(body.includes(Buffer.from('name="firmware"; filename="firmware.bin"')));
         assert.ok(body.includes(Buffer.from([0xE9,1,0,0x40,0xB8,0xF0,0x10,0x40])));
         if(mode==='network') return route.abort();
-        if(mode==='error') return route.fulfill({status:500,json:{error:'Position konnte nicht gespeichert werden. Firmware-Update abgebrochen.'}});
+        if(mode==='error') return route.fulfill({status:500,json:{error:'Could not save the position. Firmware update cancelled.'}});
         if(mode==='hold') await new Promise(resolve=>{finishRequest=resolve;heldResolve();});
         return route.fulfill({json:{ok:true,rebooting:true}});
       }
@@ -53,20 +53,20 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright-core')
     await select('archive.zip',image);await page.locator('#firmware-submit').click();
     assert.match(await page.locator('#notice').textContent(),/\.bin/);assert.equal(attempts,0);
     await select('firmware.bin',Buffer.alloc(3000));await page.locator('#firmware-submit').click();
-    assert.match(await page.locator('#notice').textContent(),/größer/);assert.equal(attempts,0);
+    assert.match(await page.locator('#notice').textContent(),/larger/);assert.equal(attempts,0);
     await select('firmware.bin',Buffer.alloc(1024));await page.locator('#firmware-submit').click();
-    await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Keine passende ESP8266'));
+    await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Not a valid ESP8266'));
     assert.equal(attempts,0);
     console.log('PASS: ZIP, oversize and invalid binary rejected before upload');
 
     await select('firmware.bin',image);await page.locator('#firmware-submit').click();
-    await page.waitForFunction(()=>document.querySelector('#firmware-status').textContent.includes('Position konnte nicht gespeichert'));
+    await page.waitForFunction(()=>document.querySelector('#firmware-status').textContent.includes('Could not save the position'));
     assert.equal(attempts,1);assert.equal(await page.locator('#position-slider').isEnabled(),true);
     assert.equal(await page.locator('#firmware-submit').isEnabled(),true);
     console.log('PASS: multipart bytes/headers and firmware save error shown, controls released');
 
     mode='network';await page.locator('#firmware-submit').click();
-    await page.waitForFunction(()=>document.querySelector('#firmware-status').textContent.includes('Keine Update-Bestätigung'));
+    await page.waitForFunction(()=>document.querySelector('#firmware-status').textContent.includes('No update confirmation'));
     assert.equal(attempts,2);
     await page.waitForFunction(()=>!document.querySelector('#firmware-submit').disabled);
     console.log('PASS: disconnected upload is unconfirmed, not falsely successful');
@@ -79,21 +79,21 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright-core')
     assert.equal(attempts,3);
     assert.equal(await page.locator('#position-slider').isDisabled(),true);
     assert.equal(await page.locator('#mqtt-server').isDisabled(),true);
-    assert.match(await page.locator('#firmware-status').textContent(),/Firmware wird geprüft/);
+    assert.match(await page.locator('#firmware-status').textContent(),/verifying firmware/);
     const before=await page.evaluate(()=>performance.timeOrigin);
     finishRequest();
-    await page.waitForFunction(()=>document.querySelector('#firmware-status').textContent.includes('Gerät startet neu'));
+    await page.waitForFunction(()=>document.querySelector('#firmware-status').textContent.includes('device is restarting'));
     assert.equal(await page.locator('#position-slider').isDisabled(),true);
     // Same token means the old process is still serving: do not falsely confirm reboot.
-    await page.waitForFunction(()=>document.querySelector('#connection').textContent.includes('warte auf Neustart'));
+    await page.waitForFunction(()=>document.querySelector('#connection').textContent.includes('waiting for restart'));
     await page.waitForResponse(r=>new URL(r.url()).pathname==='/api/config');
     assert.equal(await page.evaluate(()=>performance.timeOrigin),before);
     c.firmwareToken='test-boot-2';c.version='1.6.1';
     await page.waitForFunction(()=>document.querySelector('#firmware-info').textContent.includes('1.6.1'));
     assert.notEqual(await page.evaluate(()=>performance.timeOrigin),before);
     assert.equal(await page.locator('#position-slider').isEnabled(),true);
-    assert.match(await page.locator('#saved-values').textContent(),/100 Schritte/);
-    assert.match(await page.locator('#saved-values').textContent(),/1100 Schritte/);
+    assert.match(await page.locator('#saved-values').textContent(),/100 steps/);
+    assert.match(await page.locator('#saved-values').textContent(),/1100 steps/);
     assert.deepEqual(errors,[]);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     if(process.env.SCREENSHOT_PATH)await page.screenshot({path:process.env.SCREENSHOT_PATH,fullPage:true});
