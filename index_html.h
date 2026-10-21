@@ -42,19 +42,33 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
 <button data-control disabled>MQTT speichern &amp; neu verbinden</button>
 <p class="hint">Kein Neustart nötig. Während einer Fahrt wird bei bestehender Verbindung alle 5 Sekunden ein Status gesendet, zusätzlich beim Start und Stopp. Neue Verbindungsversuche erfolgen im Stillstand.</p>
 </form><p>Befehle: <code id="input-topic">–</code><br>Status: <code id="output-topic">–</code></p></section>
+<section><h2>Firmware-Update</h2>
+<p id="firmware-info" class="hint">Update-Informationen werden geladen …</p>
+<form id="firmware-form">
+<label for="firmware-file">Neue ESP8266-Firmware (.bin)</label>
+<input id="firmware-file" type="file" accept=".bin,application/octet-stream" required data-control disabled>
+<label><input id="firmware-confirm" type="checkbox" required data-control disabled> Update starten: Der Motor wird gestoppt und das Gerät anschließend neu gestartet.</label>
+<button id="firmware-submit" data-control disabled>Firmware hochladen &amp; installieren</button>
+</form>
+<progress id="firmware-progress" max="100" value="0" aria-label="Firmware-Upload" hidden></progress>
+<p id="firmware-status" role="status" aria-live="polite"></p>
+<p class="hint">Nur die zum Gerät passende Firmware-Datei wählen, kein ZIP-Archiv oder Dateisystem-Abbild. Stromversorgung während des Updates nicht unterbrechen. Die gespeicherten Positionen und MQTT-Einstellungen bleiben bei diesem Firmware-Upload erhalten.</p>
+</section>
 <footer><span id="version"></span> · ESP8266 · <a href="https://github.com/nidayand/motor-on-roller-blind-ws">Originalprojekt (MIT)</a></footer>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
 let socket, reconnectTimer, pollBusy = false, loaded = false, online = false, revision = -1, refreshPromise;
+let firmwareBusy = false, waitForFirmwareBoot = false, firmwareMaxSize = 0, firmwareToken = '', firmwareBootToken = '', rebootCheckStarted = 0;
 const dirty = {limits: false, direction: false, mqtt: false};
 function notice(text, error = false) {
   $('notice').textContent = text; $('notice').classList.toggle('error', error); $('notice').hidden = !text;
 }
 function setOnline(value) {
   online = value;
-  document.querySelectorAll('[data-control]').forEach(el => { el.disabled = !value || !loaded; });
-  $('connection').textContent = value ? 'Mit Gerät verbunden' : 'Verbindung unterbrochen – verbinde erneut …';
+  document.querySelectorAll('[data-control]').forEach(el => { el.disabled = !value || !loaded || firmwareBusy; });
+  $('connection').textContent = firmwareBusy ? (waitForFirmwareBoot ? 'Firmware angenommen – warte auf Neustart …' : 'Firmware wird übertragen …') : value ? 'Mit Gerät verbunden' : 'Verbindung unterbrochen – verbinde erneut …';
+  updateFirmwareButton();
 }
 async function api(path, values) {
   const options = {cache: 'no-store'};
@@ -76,6 +90,9 @@ function renderConfig(c) {
   $('device-name').textContent = c.name;
   document.title = c.name;
   $('version').textContent = 'Firmware ' + c.version;
+  firmwareMaxSize = Number(c.firmwareMaxSize) || 0;
+  firmwareToken = c.firmwareToken || '';
+  $('firmware-info').textContent = 'Installiert: ' + c.version + (firmwareMaxSize ? ' · maximal ' + Math.floor(firmwareMaxSize / 1024) + ' KiB pro Firmware-Datei.' : ' · Firmware-Upload hier noch nicht verfügbar.');
   $('persist-state').textContent = c.persisted ? 'Zuletzt erfolgreich im Flash gespeichert:' : 'Standardwerte – noch nicht im Flash gespeichert.';
   const entries = [
     ['Anfang (offen)', c.startPosition + ' Schritte'], ['Ende (geschlossen)', c.maxPosition + ' Schritte'],
@@ -113,10 +130,11 @@ function renderStatus(s) {
   if (document.activeElement !== $('position-slider')) {
     $('position-slider').value = s.set; $('slider-value').textContent = s.set;
   }
-  if (s.saveError) notice(s.saveError, true);
-  if (s.configRevision !== revision) refreshConfig().catch(e => notice(e.message, true));
+  if (s.saveError && !firmwareBusy) notice(s.saveError, true);
+  if (!firmwareBusy && s.configRevision !== revision) refreshConfig().catch(e => notice(e.message, true));
 }
 async function command(value) {
+  if (firmwareBusy) return;
   try {
     renderStatus(await api('/api/command', {command: value}));
     if (['(start)', '(max)', '(0)'].includes(value)) await refreshConfig();
@@ -125,6 +143,7 @@ async function command(value) {
 }
 async function saveForm(event, section, path) {
   event.preventDefault();
+  if (firmwareBusy) return;
   const values = new URLSearchParams(new FormData(event.target));
   if (section === 'limits' && Number(values.get('startPosition')) >= Number(values.get('maxPosition'))) {
     notice('Anfang muss kleiner als Ende sein.', true); return;
@@ -150,21 +169,87 @@ $('position-slider').addEventListener('input', event => { $('slider-value').text
 $('position-slider').addEventListener('change', event => command(event.target.value));
 function connect() {
   clearTimeout(reconnectTimer);
+  if (firmwareBusy) return;
   try { socket = new WebSocket('ws://' + location.hostname + ':81/'); }
   catch (e) { reconnectTimer = setTimeout(connect, 3000); return; }
-  socket.onopen = () => { setOnline(true); refreshConfig().catch(e => notice(e.message, true)); };
+  socket.onopen = () => { setOnline(true); if (!firmwareBusy) refreshConfig().catch(e => notice(e.message, true)); };
   socket.onmessage = event => { try { renderStatus(JSON.parse(event.data)); } catch (e) { notice('Status konnte nicht gelesen werden.', true); } };
   socket.onclose = () => { setOnline(false); reconnectTimer = setTimeout(connect, 3000); };
   socket.onerror = () => socket.close();
 }
 // HTTP fallback also detects network loss if WebSocket events fail to arrive.
 async function poll() {
-  if (pollBusy) return;
+  if (pollBusy || (firmwareBusy && !waitForFirmwareBoot)) return;
   pollBusy = true;
+  if (waitForFirmwareBoot) {
+    try {
+      const c = await api('/api/config');
+      if (c.firmwareToken && c.firmwareToken !== firmwareBootToken) { location.reload(); return; }
+    } catch (e) { /* The device is expected to be offline briefly during reboot. */ }
+    finally { pollBusy = false; }
+    if (Date.now() - rebootCheckStarted > 90000) $('firmware-status').textContent = 'Upload angenommen, aber Neustart noch nicht bestätigt. Geräteverbindung prüfen und diese Seite neu laden.';
+    return;
+  }
   try { renderStatus(await api('/api/status')); }
   catch (e) { setOnline(false); }
   finally { pollBusy = false; }
 }
+function updateFirmwareButton() {
+  const file = $('firmware-file').files[0];
+  $('firmware-submit').disabled = !online || !loaded || firmwareBusy || !firmwareToken || firmwareMaxSize < 32 || !file || !$('firmware-confirm').checked;
+}
+function firmwareFailed(message) {
+  firmwareBusy = false; waitForFirmwareBoot = false;
+  $('firmware-status').textContent = message;
+  notice(message, true); setOnline(online);
+}
+$('firmware-file').addEventListener('change', updateFirmwareButton);
+$('firmware-confirm').addEventListener('change', updateFirmwareButton);
+$('firmware-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (firmwareBusy || !online || !loaded) return;
+  const file = $('firmware-file').files[0];
+  if (!file || !/\.bin$/i.test(file.name)) { notice('Bitte eine unkomprimierte Firmware-Datei (.bin) auswählen.', true); return; }
+  if (file.size < 32 || file.size > firmwareMaxSize) { notice('Datei leer, zu klein oder größer als der freie Update-Speicher.', true); return; }
+  if (!$('firmware-confirm').checked || !firmwareToken) return;
+  firmwareBusy = true; setOnline(online);
+  try {
+    const header = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+    const entry = new DataView(header.buffer).getUint32(4, true);
+    if (header[0] !== 0xE9 || header[1] < 1 || header[1] > 16 || entry < 0x40100000 || entry >= 0x40110000) throw new Error('Keine passende ESP8266-Firmware. Keine ZIP-, Dateisystem- oder ESP32-Datei verwenden.');
+  } catch (e) { firmwareFailed(e.message || 'Datei konnte nicht gelesen werden.'); return; }
+  firmwareBootToken = firmwareToken;
+  const data = new FormData(); data.append('firmware', file, file.name);
+  const request = new XMLHttpRequest();
+  request.open('POST', '/api/firmware');
+  request.setRequestHeader('X-Firmware-Size', String(file.size));
+  request.setRequestHeader('X-Firmware-Token', firmwareToken);
+  request.timeout = 180000;
+  $('firmware-progress').hidden = false; $('firmware-progress').value = 0;
+  $('firmware-status').textContent = 'Firmware wird übertragen …'; notice('Update läuft. Stromversorgung nicht unterbrechen.');
+  request.upload.onprogress = event => {
+    if (!event.lengthComputable) return;
+    const percent = Math.min(100, Math.round(event.loaded * 100 / event.total));
+    $('firmware-progress').value = percent;
+    $('firmware-status').textContent = percent < 100 ? 'Übertragung: ' + percent + ' %' : 'Übertragung: 100 % – Firmware wird geprüft …';
+  };
+  request.onload = () => {
+    let result = {};
+    try { result = JSON.parse(request.responseText); } catch (e) { /* Unconfirmed response. */ }
+    if (request.status !== 200 || result.ok !== true || result.rebooting !== true) {
+      firmwareFailed(result.error || 'Update nicht bestätigt. Geräteversion prüfen, bevor erneut hochgeladen wird.'); return;
+    }
+    $('firmware-progress').value = 100;
+    $('firmware-status').textContent = 'Firmware angenommen. Gerät startet neu; die Seite wird nach Wiederverbindung neu geladen.';
+    notice('Firmware angenommen – warte auf Neustart …');
+    waitForFirmwareBoot = true; rebootCheckStarted = Date.now(); setOnline(false);
+  };
+  request.onerror = request.ontimeout = request.onabort = () => {
+    setOnline(false);
+    firmwareFailed('Keine Update-Bestätigung erhalten. Verbindung und Geräteversion prüfen, bevor erneut hochgeladen wird.');
+  };
+  request.send(data);
+});
 connect(); poll(); setInterval(poll, 2000);
 </script>
 </body></html>)HTML";

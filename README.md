@@ -1,6 +1,34 @@
-# Rollladensteuerung – ESP8266, Version 1.5.0
+# Rollladensteuerung – ESP8266, Version 1.6.0
 
 Überarbeitete Fassung von [motor-on-roller-blind-ws](https://github.com/nidayand/motor-on-roller-blind-ws), MIT-Lizenz. Bestehende Motorverdrahtung bleibt unverändert: `Stepper_28BYJ_48(D1, D3, D2, D4)`.
+
+## Neu in 1.6.0: Firmware über die Weboberfläche aktualisieren
+
+Die vorhandenen Funktionen bleiben erhalten. Zusätzlich gibt es unten auf der Hauptseite den Bereich **Firmware-Update** mit Dateiauswahl, Upload-Fortschritt und automatischer Wiederverbindung nach dem Neustart.
+
+**Einmalige Installation dieser Version:** Die bisherige Firmware ohne Web-Upload kann diese neue Seite noch nicht anbieten. Version 1.6.0 daher einmal wie bisher per Arduino IDE/USB oder über das schon vorhandene ArduinoOTA aufspielen. Danach sind weitere Updates direkt über die Webseite möglich, solange die zukünftig hochgeladene Firmware diese Funktion ebenfalls enthält.
+
+### Bedienung
+
+1. Die normale Geräte-Webseite öffnen und zu „Firmware-Update“ scrollen. Aktuelle Version und maximal zulässige Dateigröße werden angezeigt.
+2. Eine **unkomprimierte `.bin`-Firmware für den verwendeten ESP8266 und dessen Flashlayout** auswählen. Beispielsweise die mitgelieferte Datei `build/esp8266.esp8266.nodemcu-1.6.0/motor_on_a_roller_blind-ws.ino.bin`. Nicht das ZIP-Archiv, kein Dateisystem-Abbild und keine ESP32-Firmware auswählen.
+3. Die Checkbox für Motorstopp/Neustart bestätigen und „Firmware hochladen & installieren“ drücken.
+4. Der Motor wird gestoppt und die aktuelle Position gespeichert. Kann nicht gespeichert werden, wird der Upload mit einer Fehlermeldung abgebrochen.
+5. Während der Übertragung sind Motorsteuerung und Einstellungsänderungen gesperrt. Die Stromversorgung nicht unterbrechen.
+6. Erst nach vollständiger Übertragung und erfolgreichem Abschluss wird der Neustart ausgelöst. Die Seite wartet auf eine neue Geräte-Bootkennung und lädt sich anschließend neu. 100 % Upload allein wird **nicht** als erfolgreiches Update oder Neustart interpretiert.
+
+Min-/Max-Position, letzte gespeicherte Position, Richtung, MQTT- und WLAN-Einstellungen werden bei diesem **Firmware-only-Upload** nicht gelöscht. Die neue Firmware muss weiterhin dasselbe Dateisystem/Flashlayout verwenden und die gespeicherten Felder verstehen. Eine beliebige andere Firmware kann dieses Verhalten nicht garantieren.
+
+### Verhalten bei Fehlern
+
+- Dateiendung, Mindest-/Maximalgröße und der unkomprimierte ESP8266-Header werden vor dem Schreiben geprüft. Die Flash-Prüfungen des ESP8266-Updaters bleiben aktiv. Das ist keine kryptografische Signaturprüfung oder vollständige Prüfung, dass jedes beliebige Image zur Mechanik und Flashaufteilung dieses Geräts passt.
+- Es wird nur der Firmware-Bereich (`U_FLASH`) aktualisiert; ein Dateisystem-Upload ist nicht vorgesehen. Die Datei wird gestreamt, nicht vollständig im ESP-RAM gehalten.
+- Der Server vergleicht die tatsächliche Übertragungslänge mit der vorher angekündigten Dateigröße. Ein letztes Byte bleibt bis zum erfolgreichen Abschluss der **gesamten HTTP-Anfrage** zurückgehalten. Dadurch wird auch ein Abbruch nach `FILE_END` oder eine zweite Datei im selben Formular nicht versehentlich zur Installation freigegeben.
+- Bei abgebrochenen/unvollständigen Anfragen oder Schreibfehlern erfolgt kein Neustart und die bisherige Firmware bleibt aktiv. Der Motor fährt nicht automatisch weiter.
+- Geht nur die HTTP-Erfolgsantwort verloren, ist der Ausgang aus Browsersicht unbestätigt: erst Verbindung/Geräteversion prüfen, nicht blind erneut hochladen.
+- Der Upload nutzt dieselbe lokale, unverschlüsselte Weboberfläche wie die Steuerung. Ein pro Start erzeugter Token und benutzerdefinierte Upload-Header verhindern einfache fremde Browser-Formularanfragen; es gibt dadurch aber keine zusätzliche Benutzeranmeldung oder signierte Firmware. Für das vertraute lokale Netz vorgesehen.
+
+Deine zuletzt aktualisierte Heap-Pufferkorrektur beim Konfigurationslesen sowie die Bootdiagnose wurden beibehalten. Bibliotheken, Pins, Schritt-Einheit, Flashprofil und SPIFFS-Format wurden für dieses Feature nicht geändert.
 
 ## Aktualisierung auf aktuelle Bibliotheken (1.5.0)
 
@@ -101,12 +129,12 @@ Die HTML-Seite liegt in der Firmware. Die Motorpins und die logische Schritt-Ein
 Mit einer aktuellen Arduino CLI im Projektordner:
 
 ```sh
-arduino-cli compile --profile modern --warnings all --output-dir build/esp8266.esp8266.nodemcu-1.5.0 .
+arduino-cli compile --profile modern --warnings all --output-dir build/esp8266.esp8266.nodemcu-1.6.0 .
 ```
 
 Das Profil in `sketch.yaml` installiert die festgelegten aktuellen Versionen bei Bedarf isoliert und wählt das richtige Flashlayout. Es wurde tatsächlich mit diesem Profil gebaut; es sind keine absoluten Workspace-Pfade nötig.
 
-Neue Firmware: `build/esp8266.esp8266.nodemcu-1.5.0/motor_on_a_roller_blind-ws.ino.bin`. Der Build verwendet QIO/40 MHz Flash, 80 MHz CPU, 4 MB Flash und 1 MB SPIFFS. Die alten vorhandenen Build-Verzeichnisse wurden nicht überschrieben; im neuen Lieferarchiv liegt nur die neue Firmware.
+Neue Firmware: `build/esp8266.esp8266.nodemcu-1.6.0/motor_on_a_roller_blind-ws.ino.bin`. Der Build verwendet QIO/40 MHz Flash, 80 MHz CPU, 4 MB Flash und 1 MB SPIFFS. Die alten vorhandenen Build-Verzeichnisse wurden nicht überschrieben; im neuen Lieferarchiv liegt nur die neue Firmware.
 
 ### Kompatibilität des gespeicherten Dateisystems
 
@@ -114,7 +142,7 @@ Der alte Linkerbereich war `0x40500000` bis `0x405fb000`, im aktuellen 1-MB-FS-P
 
 Zusätzlich wurde ein Konfigurationsabbild mit dem SPIFFS-Werkzeug des alten 2.4.2-Cores erzeugt, auf den aktuellen Bereich begrenzt und mit dem aktuellen Core-Werkzeug ausgelesen: `config.json` war byteidentisch. Das ist ein Offline-Abbildnachweis, kein Hardwaretest. Die Firmware deaktiviert das automatische Formatieren bei Mountfehlern, sodass eine falsche Layoutauswahl bestehende Daten nicht stillschweigend löscht.
 
-ArduinoOTA bleibt erhalten. Es wurde **kein Upload oder physischer Motorversuch** ausgeführt. Nach einem Core-Sprung ist ein erster regulärer USB-Upload die einfachste Vorgehensweise; ein OTA-Upgrade über die vorhandene Altfirmware wurde nicht getestet.
+ArduinoOTA bleibt zusätzlich zum Web-Upload erhalten. Es wurde **kein Upload auf ein echtes Gerät oder physischer Motorversuch** ausgeführt. Nach einem Core-Sprung ist ein erster regulärer USB-Upload die einfachste Vorgehensweise; ein OTA-Upgrade über die vorhandene Altfirmware wurde nicht getestet.
 
 ### HTTP-Schnittstellen
 
@@ -124,10 +152,17 @@ ArduinoOTA bleibt erhalten. Es wurde **kein Upload oder physischer Motorversuch*
 - `POST /api/limits`: `startPosition`, `maxPosition`.
 - `POST /api/direction`: `clockwise=true|false`.
 - `POST /api/mqtt`: `mqtt_server`, `mqtt_port`, `mqtt_uid`, optional `mqtt_pwd` und `clear_password=true`.
+- `POST /api/firmware`: `multipart/form-data` mit genau einer Datei im Feld `firmware`; Header `X-Firmware-Size` (Dateibytes) und `X-Firmware-Token` (aus `GET /api/config`). Nur für Firmware, nicht für Dateisysteme.
 
-POST-Daten als `application/x-www-form-urlencoded`. Erfolgsantwort: JSON; ungültige Werte: HTTP 400; Speicherfehler: HTTP 500.
+Einstellungs-/Befehls-POSTs als `application/x-www-form-urlencoded`, Firmware als `multipart/form-data`. Erfolgsantwort: JSON; ungültige Werte: HTTP 400; Speicherfehler: HTTP 500.
 
 ## Prüfungen
+
+Zusätzlich für den Web-Upload:
+
+- `tests/firmware_upload_test.cpp`: tatsächlicher Streaming-Controller mit Fake-Flash-Writer; fragmentierte Header und Blöcke, exakte Bytefolge, Größenlimits, falsche Header/ESP32, unvollständige/zu lange Anfragen, Abbruch vor/nach `FILE_END`, mehrere Dateien, Wiederholung nach Fehlern sowie Schreib-/Abschlussfehler. Optional wird die tatsächlich erzeugte BIN-Datei vollständig durch den Controller gestreamt und byteweise verglichen.
+- `tests/firmware_browser_test.cjs`: echte Oberfläche und XMLHttpRequest gegen simulierte Geräte-API; Freigabe, Dateifilter, Multipart-Datei/Upload-Header, Fortschrittsanzeige, Bediensperre, Fehler, unbestätigte Netzwerkabbrüche und Neustart-Erkennung mit Seiten-Neuladen. Das Fortschrittsereignis ist im Interceptiontest ebenfalls simuliert.
+
 
 - Reale Firmware-Kompilierung für den ESP8266 mit obigen Versionen.
 - `tests/motion_test.cpp`: echte Positions-/Timerlogik, Befehlsvalidierung, Null-/Umkehrgrenzen, nichtnullbasierte Koordinaten, große Werte, Stoppen sowie 5-Sekunden-Timer einschließlich `millis()`-Überlauf.
@@ -141,6 +176,9 @@ g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=undefined,address tests/motion_t
 /tmp/blind-motion-test
 g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=undefined,address -I tests/host -I /pfad/zu/ArduinoJson/src tests/helper_test.cpp NidayandHelper.cpp -o /tmp/blind-helper-test
 /tmp/blind-helper-test
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=undefined,address tests/firmware_upload_test.cpp -o /tmp/blind-upload-test
+/tmp/blind-upload-test build/esp8266.esp8266.nodemcu-1.6.0/motor_on_a_roller_blind-ws.ino.bin
+PLAYWRIGHT_MODULE=/pfad/zu/playwright-core node tests/firmware_browser_test.cjs
 PLAYWRIGHT_MODULE=/pfad/zu/playwright-core node tests/browser_test.cjs
 ```
 

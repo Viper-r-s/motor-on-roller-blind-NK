@@ -9,15 +9,17 @@
 #include <ESP8266WebServer.h>
 #include <WebSocketsServer.h>
 #include <ArduinoOTA.h>
+#include <Updater.h>
 #include "NidayandHelper.h"
 #include "BlindMotion.h"
 #include "StatusSchedule.h"
+#include "FirmwareUpload.h"
 #include "index_html.h"
 
 // Keep the original AP credentials and motor pin order.
 const char* APid = "F1";
 const char* APpw = "12345678";
-const char* version = "1.5.0";
+const char* version = "1.6.0";
 
 struct DeviceConfig {
   long currentPosition = 0;
@@ -46,6 +48,21 @@ bool shouldSaveConfig = false;
 unsigned long configRevision = 0;
 StatusSchedule statusSchedule;
 String saveError;
+FirmwareUpload firmwareUpload;
+String firmwareToken;
+unsigned long firmwareRestartRequestedAt = 0;
+struct FlashFirmwareWriter {
+  bool begin(size_t size) { return Update.begin(size, U_FLASH); }
+  size_t write(uint8_t* data, size_t length) { return Update.write(data, length); }
+  bool end(bool partial) { return Update.end(partial); }
+} firmwareWriter;
+
+size_t firmwareCapacity() {
+  uint32_t freeSpace = ESP.getFreeSketchSpace();
+  return freeSpace > 0x1000 ? (freeSpace - 0x1000) & 0xFFFFF000UL : 0;
+}
+
+bool updateBusy() { return firmwareUpload.busy() || Update.isRunning(); }
 
 void copyJsonString(JsonVariantConst json, const char* key, char* destination, size_t size) {
   const char* value = json[key];
@@ -142,6 +159,9 @@ String configJson() {
   json["configRevision"] = configRevision;
   json["name"] = config.name;
   json["version"] = version;
+  json["firmwareMaxSize"] = firmwareCapacity();
+  json["firmwareToken"] = firmwareToken;
+  json["firmwareUpdating"] = updateBusy();
   json["currentPosition"] = config.currentPosition;
   json["startPosition"] = config.startPosition;
   json["maxPosition"] = config.maxPosition;
@@ -177,6 +197,7 @@ void configureMqtt() {
 bool processMsg(String message, String& error) {
   if (message == "(ping)") return true;
   if (message == "(update)") { publishStatus(); return true; }
+  if (updateBusy()) { error = "Firmware-Update aktiv. Motorsteuerung ist gesperrt."; return false; }
   if (message == "(0)") {
     haltMotor();
     bool ok = savePosition();
@@ -245,7 +266,65 @@ void respondError(int code, const String& error) {
   server.send(code, "application/json; charset=utf-8", result);
 }
 
+// Custom streaming endpoint: never accepts filesystem images and only commits
+// after the complete multipart request (not merely the first FILE_END).
+void handleFirmwareUpload() {
+  HTTPUpload& upload = server.upload();
+  if (upload.status == UPLOAD_FILE_START) {
+    if (firmwareUpload.busy()) {
+      firmwareUpload.reject(firmwareWriter, 409, "Nur eine Firmware-Datei pro Anfrage erlaubt.");
+      return;
+    }
+    if (Update.isRunning()) {
+      firmwareUpload.reject(firmwareWriter, 409, "Ein anderes Update ist bereits aktiv."); return;
+    }
+    if (!firmwareToken.length() || server.header("X-Firmware-Token") != firmwareToken) {
+      firmwareUpload.reject(firmwareWriter, 403, "Update-Freigabe fehlt. Seite neu laden."); return;
+    }
+    if (upload.name != "firmware" || !FirmwareUpload::validName(upload.filename.c_str())) {
+      firmwareUpload.reject(firmwareWriter, 400, "Genau eine Firmware-Datei (.bin) auswaehlen."); return;
+    }
+    long size;
+    if (!BlindMotion::parseNumber(server.header("X-Firmware-Size").c_str(), 32, firmwareCapacity(), size)) {
+      firmwareUpload.reject(firmwareWriter, 413, "Ungueltige Dateigroesse oder zu wenig Update-Speicher."); return;
+    }
+    haltMotor();
+    if (!savePosition()) {
+      firmwareUpload.reject(firmwareWriter, 500, "Position konnte nicht gespeichert werden. Firmware-Update abgebrochen."); return;
+    }
+    publishStatus();
+    firmwareUpload.begin(firmwareWriter, size, firmwareCapacity());
+  } else if (upload.status == UPLOAD_FILE_WRITE) {
+    firmwareUpload.write(firmwareWriter, upload.buf, upload.currentSize);
+  } else if (upload.status == UPLOAD_FILE_END) {
+    firmwareUpload.fileEnd(firmwareWriter, upload.totalSize);
+  } else if (upload.status == UPLOAD_FILE_ABORTED) {
+    firmwareUpload.reject(firmwareWriter, 400, "Upload abgebrochen. Bisherige Firmware bleibt aktiv.");
+    haltMotor();
+  }
+  yield();
+}
+
+void handleFirmwareComplete() {
+  if (!firmwareUpload.finish(firmwareWriter)) {
+    respondError(firmwareUpload.errorCode, firmwareUpload.error);
+    return;
+  }
+  server.sendHeader("Cache-Control", "no-store");
+  server.sendHeader("Connection", "close");
+  server.client().setNoDelay(true);
+  server.send(200, "application/json; charset=utf-8", "{\"ok\":true,\"rebooting\":true}");
+  firmwareRestartRequestedAt = millis();
+}
+
+bool rejectDuringUpdate() {
+  if (!updateBusy()) return false;
+  respondError(409, "Firmware-Update aktiv. Einstellungen und Motorsteuerung sind gesperrt.");
+  return true;
+}
+
 void handleLimits() {
+  if (rejectDuringUpdate()) return;
   long first, last;
   if (!BlindMotion::parseNumber(server.arg("startPosition").c_str(), -BlindMotion::coordinateLimit, BlindMotion::coordinateLimit, first) ||
       !BlindMotion::parseNumber(server.arg("maxPosition").c_str(), -BlindMotion::coordinateLimit, BlindMotion::coordinateLimit, last) ||
@@ -265,6 +344,7 @@ void handleLimits() {
 }
 
 void handleDirection() {
+  if (rejectDuringUpdate()) return;
   String value = server.arg("clockwise");
   if (value != "true" && value != "false") { respondError(400, "Ungueltige Laufrichtung."); return; }
   haltMotor();
@@ -277,6 +357,7 @@ void handleDirection() {
 }
 
 void handleMqttSettings() {
+  if (rejectDuringUpdate()) return;
   long port;
   String host = server.arg("mqtt_server"), uid = server.arg("mqtt_uid"), password = server.arg("mqtt_pwd");
   host.trim();
@@ -367,6 +448,9 @@ void setup() {
     MDNS.addService("http", "tcp", 80);
     MDNS.addService("ws", "tcp", 81);
   }
+  firmwareToken = String(ESP.random(), HEX) + String(ESP.random(), HEX) + String(ESP.random(), HEX);
+  server.collectHeaders("X-Firmware-Token", "X-Firmware-Size");
+  server.on("/api/firmware", HTTP_POST, handleFirmwareComplete, handleFirmwareUpload);
   server.on("/", HTTP_GET, []() { server.sendHeader("Cache-Control", "no-store"); server.send_P(200, "text/html; charset=utf-8", INDEX_HTML); });
   server.on("/api/status", HTTP_GET, []() { server.sendHeader("Cache-Control", "no-store"); server.send(200, "application/json; charset=utf-8", statusJson()); });
   server.on("/api/config", HTTP_GET, []() { server.sendHeader("Cache-Control", "no-store"); server.send(200, "application/json; charset=utf-8", configJson()); });
@@ -393,10 +477,17 @@ void setup() {
 }
 
 void loop() {
-  ArduinoOTA.handle();
+  if (firmwareUpload.state == FirmwareUpload::Complete) {
+    haltMotor();
+    if (uint32_t(millis() - firmwareRestartRequestedAt) >= 1200U) ESP.restart();
+    yield();
+    return;
+  }
+  if (!firmwareUpload.busy()) ArduinoOTA.handle();
   MDNS.update();
   webSocket.loop();
   server.handleClient();
+  if (firmwareUpload.busy()) { haltMotor(); yield(); return; }
   // Connection attempts can block inside the TCP library: do them only at rest.
   // An already connected broker continues receiving commands during motion.
   if (config.mqttServer[0]) {
