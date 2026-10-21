@@ -1,0 +1,152 @@
+#line 1 "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws\\README.md"
+# Rollladensteuerung – ESP8266, Version 1.5.0
+
+Überarbeitete Fassung von [motor-on-roller-blind-ws](https://github.com/nidayand/motor-on-roller-blind-ws), MIT-Lizenz. Bestehende Motorverdrahtung bleibt unverändert: `Stepper_28BYJ_48(D1, D3, D2, D4)`.
+
+## Aktualisierung auf aktuelle Bibliotheken (1.5.0)
+
+Der Quellcode ist auf **ESP8266-Core 3.1.2 und ArduinoJson 7.4.3** migriert. Alte `JsonBuffer`-/`parseObject`-/`printTo`-Schnittstellen sind durch `JsonDocument`, `deserializeJson` und `serializeJson` ersetzt. WiFiManager 2.0.17 und WebSockets 2.7.2 werden verwendet. PubSubClient 2.8.0 und Stepper_28BYJ_48 1.0.0 sind bereits die neuesten stabilen Releases und bleiben deshalb unverändert. Stand: 21.10.2026.
+
+Das neue `sketch.yaml` enthält ein reproduzierbares Arduino-CLI-Profil mit allen getesteten Versionen und **explizit 4 MB Flash / 1 MB FS**. Die alten Bibliotheken sind nicht mehr erforderlich. Die fünf funktionalen Erweiterungen aus 1.4.0 bleiben erhalten.
+
+**Bewusste Kompatibilitätsausnahme: SPIFFS.** Der aktuelle ESP8266-Core enthält SPIFFS weiterhin, markiert es aber als veraltet. Es bleibt hier erhalten, weil ein bloßer Wechsel auf LittleFS die vorhandenen Konfigurationsdateien nicht lesen könnte. Deshalb können beim Kompilieren SPIFFS-Deprecation-Warnungen erscheinen; sie sind kein ArduinoJson-Kompatibilitätsfehler. Es findet keine automatische LittleFS-Konvertierung statt. Siehe [ESP8266-Dateisystem-Dokumentation](https://arduino-esp8266.readthedocs.io/en/latest/filesystem.html).
+
+## Funktionen
+
+- Deutsche, mobil nutzbare Weboberfläche ohne externe Skripte, Stylesheets oder Internetverbindung.
+- Anzeige der **zuletzt erfolgreich gespeicherten Werte**, getrennt von der laufenden Schrittposition: Anfang, Ende, Position, Schließrichtung, MQTT-Broker, Port, Benutzername und Passwortstatus.
+- Anfang und Ende jederzeit direkt in Schritten ändern oder die aktuelle Position per Taste übernehmen. Vor dem Speichern wird der Motor gestoppt. Das Speichern startet keine Fahrt.
+- Schließrichtung (CW/CCW) nachträglich ohne Neustart ändern; der Motor wird vorher gestoppt.
+- MQTT-Host, Port und Zugangsdaten über dieselbe Oberfläche ändern, ohne WLAN-Einstellungen zurückzusetzen und ohne Neustart. Leerer Host deaktiviert MQTT.
+- MQTT-Status bei Start und Stopp, bei Verbindung sowie **alle 5 Sekunden während einer Fahrt**. Die Oberfläche erhält während einer Fahrt zusätzlich ungefähr jede Sekunde einen WebSocket-Status.
+- Behobene Altfehler: ungültige Lebensdauer der geladenen JSON-Daten, fehlende Nullterminierung, Laden erst nach dem WLAN-Portal, falsche Vorgaben für MQTT-Benutzer/Passwort, Überläufe/Division durch null in Positionsberechnungen und endlos blockierende MQTT-Verbindungsversuche.
+
+## Bedienung und Positionen
+
+1. Falls das Gerät noch kein WLAN kennt, mit dem Access Point **F1** verbinden. Das bestehende AP-Passwort bleibt `12345678`. WLAN über das Konfigurationsportal einrichten.
+2. Im normalen WLAN `http://<IP-Adresse>/` oder `http://<Gerätename>.local/` öffnen. Standardname bei neuer Konfiguration: `roller-blind`.
+3. Unter „Anfang und Ende anpassen“ manuell zur offenen Position fahren, stoppen und „Aktuell als Anfang“ drücken. Danach zur geschlossenen Position fahren, stoppen und „Aktuell als Ende“ drücken.
+4. Alternativ beide Werte direkt bearbeiten und „Grenzen speichern“ drücken. Anfang muss kleiner als Ende sein. Zulässig sind ganze Schrittkoordinaten von −1.000.000.000 bis +1.000.000.000.
+5. Die normalen Öffnen-/Schließen-Tasten und der Positionsregler verwenden die gespeicherten Grenzen. 0 % bedeutet offen/Anfang, 100 % geschlossen/Ende.
+
+**Koordinaten bleiben erhalten:** Wird eine andere Stelle als Anfang gespeichert, wird die aktuelle Position nicht auf null zurückgesetzt; der Endpunkt verschiebt sich nicht mit. Prozentwerte werden aus `(Position − Anfang) / (Ende − Anfang)` berechnet. Beide Endpunkte können dadurch unabhängig geändert werden. Bei ungünstigen alten Grenzen beide Zahlen gemeinsam eingeben.
+
+Die Schritt-Einheit ist dieselbe wie im Altprojekt: ein Aufruf von `Stepper_28BYJ_48.step(1)` (die Bibliothek führt dabei acht Halbschritte aus).
+
+**Manuelles Fahren ist wie bisher unbegrenzt** und dient zur Kalibrierung. Es gibt keine Hardware-Endschalter oder Positionssensoren. Deshalb manuelle Fahrten beobachten und stoppen; nach einer Richtungsumstellung die Endpunkte prüfen. Die Prozentanzeige wird auf 0–100 % begrenzt, während die rohe Schrittkoordinate auch außerhalb der gespeicherten Grenzen sichtbar bleibt.
+
+## Speicherung und Übernahme bestehender Werte
+
+- Weiterhin SPIFFS und `/config.json`, keine Umstellung auf LittleFS. Ein fehlgeschlagener Mount formatiert **keine vorhandenen Daten**. Nur ein vollständig als gelöscht (alle Bytes `0xFF`) geprüfter Flash-Dateisystembereich wird beim Erstbetrieb initialisiert. Bei falschem Flashlayout oder beschädigtem vorhandenen Dateisystem bleibt die Speicherung gesperrt und die Oberfläche meldet den Fehler.
+- Alte Konfigurationen werden übernommen; fehlt `startPosition`, gilt wie bisher Anfang = 0. WLAN-Zugangsdaten bleiben separat im ESP erhalten.
+- Flash-Schreiben nur beim Stoppen, Erreichen eines Ziels oder Speichern einer Einstellung – nicht bei jedem Schritt oder 5-Sekunden-Update.
+- Erst wird eine vollständige `/config.tmp` geschrieben und geschlossen, dann die alte Datei nach `/config.bak` verschoben und die neue installiert. Bei fehlender/defekter Hauptdatei wird die Sicherung gelesen. Das ist eine Wiederherstellungsstrategie, keine Garantie gegen jeden Spannungsabfall.
+- Fehler beim Speichern werden an die Oberfläche gemeldet; neue Einstellungen werden erst nach erfolgreichem Schreiben wirksam. Die bisher gespeicherten Werte bleiben erhalten. Der Motor bleibt gestoppt.
+- Ohne Positionssensor kann nach Stromausfall während einer Fahrt nur die letzte gespeicherte Position wiederhergestellt werden; dann gegebenenfalls neu kalibrieren.
+
+## MQTT
+
+- Anmeldung/Registrierung: `/raw/esp8266/register` mit Chip-ID und IP-Adresse.
+- Befehle: `/raw/esp8266/<chip-id>/in`.
+- Status: `/raw/esp8266/<chip-id>/out`.
+- Die Topics werden in der Oberfläche angezeigt und sind weiterhin chipbasiert, nicht frei konfigurierbar.
+
+### Befehle (auch weiterhin per WebSocket auf Port 81)
+
+| Nachricht | Wirkung |
+| --- | --- |
+| `(start)` | Stoppen und aktuelle Schrittkoordinate als Anfang speichern |
+| `(max)` | Stoppen und aktuelle Schrittkoordinate als Ende speichern |
+| `(0)` | Stoppen und Position speichern |
+| `(-1)` | Manuell öffnen, ohne Endbegrenzung |
+| `(1)` | Manuell schließen, ohne Endbegrenzung |
+| `0` bis `100` | Automatisch zur Prozentposition zwischen Anfang und Ende fahren |
+| `(update)` | Aktuellen Status anfordern |
+| `(ping)` | Keine Bewegung |
+
+Ungültige Nachrichten lösen keine Fahrt aus. `set` und `position` bleiben Prozentwerte, zusätzliche Felder enthalten Schrittkoordinaten und Bewegungszustand:
+
+```json
+{"type":"status","set":100,"position":40,"currentPosition":500,"targetPosition":1100,"startPosition":100,"maxPosition":1100,"moving":true,"direction":"down","clockwise":false,"mqttConnected":true,"configRevision":1,"saveError":""}
+```
+
+Die 5-Sekunden-Meldungen setzen eine bestehende MQTT-Verbindung voraus. Bei Ausfall läuft die Motorsteuerung weiter. Neue MQTT-Verbindungsversuche erfolgen höchstens alle 5 Sekunden und nur im Stillstand, weil der TCP-Verbindungsaufbau synchron ist; eine bestehende Verbindung wird auch während der Fahrt bedient. PubSubClient-Socket-Timeout: 1 Sekunde. Das Intervall ist per `millis()` geplant, kein harter Echtzeit-Takt bei Netzstörungen. Normale QoS-0-Statusnachrichten, nicht retained.
+
+Ein leeres Passwortfeld beim Speichern **behält das bisherige Passwort**. Zum Entfernen die gesonderte Checkbox setzen. Das Passwort wird weder in Statusdaten noch in der Konfigurationsantwort oder seriellen Konfigurationslogs ausgegeben. Wie bisher liegen Zugangsdaten im SPIFFS-Flash; HTTP, WebSocket und MQTT sind unverschlüsselt und ohne zusätzliche Web-Anmeldung für das vertraute lokale Netz vorgesehen.
+
+## Bauen und Aufspielen
+
+Die vollständige Firmware wurde mit diesen aktuellen stabilen Releases kompiliert:
+
+| Komponente | Getestete Version | Offizielle Quelle |
+| --- | --- | --- |
+| ESP8266 Arduino Core | **3.1.2** | [Releases](https://github.com/esp8266/Arduino/releases/tag/3.1.2) |
+| ArduinoJson | **7.4.3**, nicht mehr 5.x | [Release](https://github.com/bblanchon/ArduinoJson/releases/tag/v7.4.3) |
+| Stepper_28BYJ_48 | 1.0.0 (weiterhin aktuell) | [Projekt](https://github.com/thomasfredericks/Stepper_28BYJ_48) |
+| PubSubClient | 2.8.0 (weiterhin aktuell) | [Release](https://github.com/knolleary/pubsubclient/releases/tag/v2.8) |
+| WiFiManager | **2.0.17** | [Release](https://github.com/tzapu/WiFiManager/releases/tag/v2.0.17) |
+| WebSockets / Links2004 | **2.7.2** | [Release](https://github.com/Links2004/arduinoWebSockets/releases/tag/2.7.2) |
+
+### Arduino IDE
+
+1. In der Boardverwaltung das Paket **esp8266 by ESP8266 Community 3.1.2** installieren/aktualisieren. Falls nötig diese zusätzliche Boardverwalter-URL eintragen: `https://arduino.esp8266.com/stable/package_esp8266com_index.json`.
+2. Über die Bibliotheksverwaltung die Versionen aus der Tabelle installieren bzw. aktualisieren. Alte ArduinoJson-5-Kopien im Sketchordner oder doppelte manuelle Bibliotheksinstallationen entfernen/auslagern, wenn die IDE sonst die falsche Version auswählt.
+3. Den Ordner `motor_on_a_roller_blind-ws` mit allen Dateien zusammen verwenden und `motor_on_a_roller_blind-ws.ino` öffnen.
+4. Board **NodeMCU 0.9 (ESP-12 Module)**, **80 MHz**, Flash Size **4MB (FS:1MB OTA:~1019KB)** und Erase Flash **Only Sketch** wählen. Der aktuelle Core verwendet standardmäßig teilweise 2 MB FS – für dieses vorhandene Gerät deshalb die 1-MB-Einstellung ausdrücklich wählen.
+5. Kompilieren und bei Bedarf regulär hochladen. Kein Dateisystem-Image hochladen und keinen vollständigen Flash-Erase durchführen, wenn vorhandene Einstellungen erhalten bleiben sollen.
+
+Die HTML-Seite liegt in der Firmware. Die Motorpins und die logische Schritt-Einheit wurden nicht verändert.
+
+### Arduino CLI – reproduzierbarer Build
+
+Mit einer aktuellen Arduino CLI im Projektordner:
+
+```sh
+arduino-cli compile --profile modern --warnings all --output-dir build/esp8266.esp8266.nodemcu-1.5.0 .
+```
+
+Das Profil in `sketch.yaml` installiert die festgelegten aktuellen Versionen bei Bedarf isoliert und wählt das richtige Flashlayout. Es wurde tatsächlich mit diesem Profil gebaut; es sind keine absoluten Workspace-Pfade nötig.
+
+Neue Firmware: `build/esp8266.esp8266.nodemcu-1.5.0/motor_on_a_roller_blind-ws.ino.bin`. Der Build verwendet QIO/40 MHz Flash, 80 MHz CPU, 4 MB Flash und 1 MB SPIFFS. Die alten vorhandenen Build-Verzeichnisse wurden nicht überschrieben; im neuen Lieferarchiv liegt nur die neue Firmware.
+
+### Kompatibilität des gespeicherten Dateisystems
+
+Der alte Linkerbereich war `0x40500000` bis `0x405fb000`, im aktuellen 1-MB-FS-Profil ist es `0x40500000` bis `0x405fa000`. Anfang, Seitengröße (256 Bytes) und Blockgröße (8192 Bytes) sind identisch. Beide Bereiche ergeben **125 vollständige SPIFFS-Blöcke**; der alte zusätzliche 4-KB-Rest war kein zusätzlicher vollständiger Block.
+
+Zusätzlich wurde ein Konfigurationsabbild mit dem SPIFFS-Werkzeug des alten 2.4.2-Cores erzeugt, auf den aktuellen Bereich begrenzt und mit dem aktuellen Core-Werkzeug ausgelesen: `config.json` war byteidentisch. Das ist ein Offline-Abbildnachweis, kein Hardwaretest. Die Firmware deaktiviert das automatische Formatieren bei Mountfehlern, sodass eine falsche Layoutauswahl bestehende Daten nicht stillschweigend löscht.
+
+ArduinoOTA bleibt erhalten. Es wurde **kein Upload oder physischer Motorversuch** ausgeführt. Nach einem Core-Sprung ist ein erster regulärer USB-Upload die einfachste Vorgehensweise; ein OTA-Upgrade über die vorhandene Altfirmware wurde nicht getestet.
+
+### HTTP-Schnittstellen
+
+- `GET /api/status`: laufende Position und Zustand.
+- `GET /api/config`: gespeicherte Einstellungen; nur Passwortstatus, kein Passwort.
+- `POST /api/command`: `command`, z. B. `(0)` oder `50`.
+- `POST /api/limits`: `startPosition`, `maxPosition`.
+- `POST /api/direction`: `clockwise=true|false`.
+- `POST /api/mqtt`: `mqtt_server`, `mqtt_port`, `mqtt_uid`, optional `mqtt_pwd` und `clear_password=true`.
+
+POST-Daten als `application/x-www-form-urlencoded`. Erfolgsantwort: JSON; ungültige Werte: HTTP 400; Speicherfehler: HTTP 500.
+
+## Prüfungen
+
+- Reale Firmware-Kompilierung für den ESP8266 mit obigen Versionen.
+- `tests/motion_test.cpp`: echte Positions-/Timerlogik, Befehlsvalidierung, Null-/Umkehrgrenzen, nichtnullbasierte Koordinaten, große Werte, Stoppen sowie 5-Sekunden-Timer einschließlich `millis()`-Überlauf.
+- `tests/helper_test.cpp`: sichere Speicherinitialisierung (bestehendes Volume, nichtleerer Flash, Lesefehler und frischer gelöschter Bereich) sowie echter Speicher-/MQTT-Helfer mit ArduinoJson 7.4.3 und simulierten Peripheriegeräten; JSON-Lebensdauer, Lesen/Schreiben, Sonderzeichen, Schreibfehler, Backup-Wiederherstellung und begrenzte Wiederverbindungsversuche.
+- `tests/browser_test.cjs`: echte Seite in headless Chrome mit **simulierter Geräte-API**; gespeicherte/live Werte, Kalibrierung, Richtungswechsel, MQTT/Passwortbehandlung, Speicherfehler, Wiederverbindung, Erhalt von Formularentwürfen, mobiles Layout und HTML-sichere Darstellung.
+
+Beispiel für Hosttests (Ausgaben in temporäres Verzeichnis):
+
+```sh
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=undefined,address tests/motion_test.cpp -o /tmp/blind-motion-test
+/tmp/blind-motion-test
+g++ -std=c++11 -Wall -Wextra -Werror -fsanitize=undefined,address -I tests/host -I /pfad/zu/ArduinoJson/src tests/helper_test.cpp NidayandHelper.cpp -o /tmp/blind-helper-test
+/tmp/blind-helper-test
+PLAYWRIGHT_MODULE=/pfad/zu/playwright-core node tests/browser_test.cjs
+```
+
+Nicht am Gerät geprüft: tatsächliche Drehrichtung/Mechanik, WLAN/OTA und MQTT über eine reale Funk-/Brokerverbindung. Der Browsertest allein ist kein Nachweis für physische Bewegung oder dauerhafte Flash-Speicherung; dafür dienen ergänzend die getrennten Logik-/Helfertests, ein Hardwareversuch steht aber noch aus.
+
+## Originalprojekt
+
+[Quellprojekt](https://github.com/nidayand/motor-on-roller-blind-ws) · [3D-Druckteile und Bauanleitung](https://www.thingiverse.com/thing:2392856) · [Stepper-Bibliothek](https://github.com/thomasfredericks/Stepper_28BYJ_48). Lizenz siehe `LICENSE`.

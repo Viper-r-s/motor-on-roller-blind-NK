@@ -1,0 +1,9 @@
+{
+  "additionalFiles": "..\\..\\..,..\\..\\..,..\\..,..\\..,..\\..,..\\..,..\\..,..\\..,..\\..,..\\..\\..,..\\..\\..\\..,..\\..\\..\\..,..\\..\\..\\..,..\\..\\..\\..,..\\..\\..\\..,..\\..\\..\\..,..\\..\\..",
+  "compiler.optimization_flags": "",
+  "customBuildProperties": "",
+  "fqbn": "esp8266:esp8266:nodemcu:xtal=80,vt=flash,exception=disabled,stacksmash=disabled,ssl=all,mmu=3232,non32xfer=fast,eesz=4M1M,ip=lm2f,dbg=Disabled,lvl=None____,wipe=all,baud=512000",
+  "hardwareFolders": "C:\\Users\\segle\\AppData\\Local\\Arduino15\\internal\\esp8266_esp8266_3.1.2_3fcadf22d93680a8,C:\\Users\\segle\\AppData\\Local\\Arduino15\\internal\\esp8266_esp8266_3.1.2_3fcadf22d93680a8",
+  "otherLibrariesFolders": "C:\\Users\\segle\\Documents\\Arduino\\libraries",
+  "sketchLocation": "G:\\Meine Ablage\\Sicherungen\\Raspi-Sicherungen\\Node MCU ESP8266\\motor-on-roller-blind-ws-master\\v2\\motor_on_a_roller_blind-ws"
+}
