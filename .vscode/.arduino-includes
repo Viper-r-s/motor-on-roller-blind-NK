@@ -2,14 +2,17 @@ Arduino.h
 ArduinoJson.h
 ArduinoOTA.h
 BlindMotion.h
+DeviceName.h
 ESP8266WebServer.h
 ESP8266WiFi.h
 ESP8266mDNS.h
 FS.h
+FirmwareUpload.h
 NidayandHelper.h
 PubSubClient.h
 StatusSchedule.h
 Stepper_28BYJ_48.h
+Updater.h
 WebSocketsServer.h
 WiFiClient.h
 WiFiManager.h
@@ -20,5 +23,6 @@ list
 memory
 new
 pgmspace.h
+stddef.h
 stdint.h
 stdlib.h
